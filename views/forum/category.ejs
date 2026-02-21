@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>零核服务器 - <%= category.name %></title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <%- include('../partials/sidebar', { currentPath }) %>
+
+    <div class="content">
+        <div class="container">
+            <h1 class="title">零核论坛</h1>
+            
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2><%= category.name %></h2>
+                    <a href="/forum/new" class="button button-primary">发布新帖</a>
+                </div>
+                
+                <p style="color: var(--text-secondary); margin: 10px 0;"><%= category.description %></p>
+                
+                <div class="posts-list">
+                    <% if (posts.length > 0) { %>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background-color: var(--bg-tertiary);">
+                                    <th style="padding: 8px 10px; text-align: left; border-bottom: 2px solid var(--border-color); font-size: 0.9em;">标题</th>
+                                    <th style="padding: 8px 10px; text-align: left; border-bottom: 2px solid var(--border-color); font-size: 0.9em;">作者</th>
+                                    <th style="padding: 8px 10px; text-align: left; border-bottom: 2px solid var(--border-color); font-size: 0.9em;">发布时间</th>
+                                    <th style="padding: 8px 10px; text-align: left; border-bottom: 2px solid var(--border-color); font-size: 0.9em;">回复数</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <% posts.forEach(post => { %>
+                                    <tr style="border-bottom: 1px solid var(--border-color);">
+                                        <td style="padding: 6px 10px; font-size: 0.95em;">
+                                            <a href="/forum/post/<%= post.id %>" style="text-decoration: none; color: var(--accent-color); font-weight: 500;">
+                                                <%= post.title %>
+                                            </a>
+                                        </td>
+                                        <td style="padding: 6px 10px; color: var(--text-secondary); font-size: 0.9em;">
+                                            <%= post.author %>
+                                        </td>
+                                        <td style="padding: 6px 10px; color: var(--text-secondary); font-size: 0.85em;">
+                                            <%= new Date(post.createdAt).toLocaleDateString() %>
+                                        </td>
+                                        <td style="padding: 6px 10px; color: var(--text-secondary); font-size: 0.9em;">
+                                            <%= post.replies.length %>
+                                        </td>
+                                    </tr>
+                                <% }); %>
+                            </tbody>
+                        </table>
+                    <% } else { %>
+                        <p style="text-align: center; color: var(--text-tertiary); padding: 20px; font-size: 0.95em;">此分类暂无帖子</p>
+                    <% } %>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 侧边栏响应式功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+            const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+            const overlay = document.getElementById('overlay');
+
+            // 检测屏幕宽度并相应处理侧边栏
+            function handleResize() {
+                if (window.innerWidth <= 768) {
+                    // 移动端：隐藏侧边栏
+                    sidebar.classList.add('hidden');
+                    // 确保移动菜单按钮显示
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.style.display = 'flex';
+                    }
+                } else {
+                    // 桌面端：显示侧边栏
+                    sidebar.classList.remove('hidden');
+                    // 隐藏移动菜单按钮
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.style.display = 'none';
+                    }
+                }
+            }
+
+            // 初始化
+            handleResize();
+
+            // 监听窗口大小变化
+            window.addEventListener('resize', handleResize);
+
+            // 移动端打开侧边栏
+            if (mobileMenuBtn) {
+                mobileMenuBtn.addEventListener('click', function() {
+                    sidebar.classList.remove('hidden');
+                    overlay.style.display = 'block';
+                    document.body.style.overflow = 'hidden'; // 防止背景滚动
+                });
+            }
+
+            // 移动端关闭侧边栏
+            if (closeSidebarBtn) {
+                closeSidebarBtn.addEventListener('click', function() {
+                    sidebar.classList.add('hidden');
+                    overlay.style.display = 'none';
+                    document.body.style.overflow = 'auto'; // 恢复背景滚动
+                });
+            }
+
+            // 点击遮罩层关闭侧边栏
+            if (overlay) {
+                overlay.addEventListener('click', function() {
+                    sidebar.classList.add('hidden');
+                    overlay.style.display = 'none';
+                    document.body.style.overflow = 'auto'; // 恢复背景滚动
+                });
+            }
+
+            // 为导航链接添加点击事件，移动端点击后关闭侧边栏
+            const navLinks = document.querySelectorAll('.nav-menu a');
+            navLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.add('hidden');
+                        if (overlay) {
+                            overlay.style.display = 'none';
+                        }
+                        document.body.style.overflow = 'auto'; // 恢复背景滚动
+                    }
+                });
+            });
+        });
+
+        // 主题管理器类
+        class ThemeManager {
+            constructor() {
+                this.currentTheme = this.getStoredTheme() || this.getSystemTheme();
+                this.init();
+            }
+
+            // 初始化主题
+            init() {
+                this.applyTheme(this.currentTheme);
+            }
+
+            // 获取存储的主题
+            getStoredTheme() {
+                return localStorage.getItem('theme');
+            }
+
+            // 获取系统主题偏好
+            getSystemTheme() {
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+                    return 'light';
+                }
+                return 'dark';
+            }
+
+            // 应用主题
+            applyTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+                this.currentTheme = theme;
+
+                // 触发主题改变事件
+                window.dispatchEvent(new CustomEvent('themeChanged', { detail: { theme } }));
+            }
+
+            // 切换主题
+            toggleTheme() {
+                const newTheme = this.currentTheme === 'dark' ? 'light' : 'dark';
+                this.applyTheme(newTheme);
+                return newTheme;
+            }
+
+            // 获取当前主题
+            getCurrentTheme() {
+                return this.currentTheme;
+            }
+
+            // 检查是否为深色模式
+            isDark() {
+                return this.currentTheme === 'dark';
+            }
+
+            // 检查是否为浅色模式
+            isLight() {
+                return this.currentTheme === 'light';
+            }
+        }
+
+        // 创建全局主题管理器实例
+        window.themeManager = new ThemeManager();
+
+        // 如果用户有保存的主题设置，优先使用用户设置
+        document.addEventListener('DOMContentLoaded', function() {
+            <% if (typeof user !== 'undefined' && user && user.theme) { %>
+                // 应用用户保存的主题设置
+                document.documentElement.setAttribute('data-theme', '<%= user.theme %>');
+                localStorage.setItem('theme', '<%= user.theme %>');
+                window.themeManager.currentTheme = '<%= user.theme %>';
+            <% } %>
+        });
+    </script>
+</body>
+</html>

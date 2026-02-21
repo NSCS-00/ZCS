@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>零核服务器 - 管理面板</title>
+    <%- include('../partials/head'); %>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">管理面板</h1>
+        </div>
+
+        <div class="card">
+            <h2>系统概览</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                <div class="stat-card">
+                    <h3>访问人次</h3>
+                    <p style="font-size: 2rem; color: var(--accent-color);"><%= systemInfo.visitCount %></p>
+                </div>
+                <div class="stat-card">
+                    <h3>用户数量</h3>
+                    <p style="font-size: 2rem; color: var(--accent-color);"><%= systemInfo.userCount %></p>
+                </div>
+                <div class="stat-card">
+                    <h3>CPU核心数</h3>
+                    <p style="font-size: 2rem; color: var(--accent-color);"><%= systemInfo.cpuCount %></p>
+                </div>
+                <div class="stat-card">
+                    <h3>内存使用</h3>
+                    <p style="font-size: 2rem; color: var(--accent-color);">
+                        <%= Math.round((systemInfo.usedMemory / systemInfo.totalMemory) * 100) %>%
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>系统信息</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                <div>
+                    <h3>内存详情</h3>
+                    <ul>
+                        <li>总内存: <%= (systemInfo.totalMemory / (1024**3)).toFixed(2) %> GB</li>
+                        <li>已用内存: <%= (systemInfo.usedMemory / (1024**3)).toFixed(2) %> GB</li>
+                        <li>可用内存: <%= (systemInfo.freeMemory / (1024**3)).toFixed(2) %> GB</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3>负载平均值</h3>
+                    <ul>
+                        <li>1分钟: <%= systemInfo.loadAverage[0].toFixed(2) %></li>
+                        <li>5分钟: <%= systemInfo.loadAverage[1].toFixed(2) %></li>
+                        <li>15分钟: <%= systemInfo.loadAverage[2].toFixed(2) %></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>导航</h2>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <a href="/panel/users" class="button button-primary">用户管理</a>
+                <% if (user.author === 'system') { %>
+                    <a href="/panel/system" class="button button-secondary">系统控制</a>
+                <% } %>
+                <a href="/" class="button button-secondary">返回主页</a>
+            </div>
+        </div>
+    </div>
+
+    <%- include('../partials/scripts'); %>
+    
+    <style>
+        .stat-card {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+        
+        .stat-card h3 {
+            margin-top: 0;
+            color: var(--text-secondary);
+        }
+    </style>
+</body>
+</html>

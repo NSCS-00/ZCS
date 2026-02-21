@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>零核服务器 - 发布新帖</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .editor-container {
+            position: relative;
+        }
+        
+        .editor-toolbar {
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            border-radius: 5px 5px 0 0;
+        }
+        
+        .toolbar-button {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        
+        .toolbar-button:hover {
+            background: var(--accent-color);
+            color: white;
+        }
+        
+        .preview-container {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: var(--bg-tertiary);
+            border-radius: 5px;
+            min-height: 100px;
+        }
+        
+        .preview-content {
+            line-height: 1.6;
+        }
+        
+        .preview-content h1, .preview-content h2, .preview-content h3 {
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .preview-content p {
+            margin: 10px 0;
+        }
+        
+        .preview-content code {
+            background-color: var(--bg-secondary);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        
+        .preview-content pre {
+            background-color: var(--bg-secondary);
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        
+        .preview-content blockquote {
+            border-left: 3px solid var(--accent-color);
+            padding-left: 15px;
+            margin-left: 0;
+            color: var(--text-secondary);
+        }
+        
+        .preview-content ul, .preview-content ol {
+            padding-left: 20px;
+        }
+        
+        .preview-content li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <%- include('../partials/sidebar', { currentPath }) %>
+
+    <div class="content">
+        <div class="container">
+            <h1 class="title">发布新帖</h1>
+            
+            <div class="card">
+                <% if (typeof error !== 'undefined' && error) { %>
+                    <div class="status error" style="display: block; margin-bottom: 15px;">
+                        <%= error %>
+                    </div>
+                <% } %>
+                
+                <form action="/forum/new" method="post">
+                    <div style="margin-bottom: 12px;">
+                        <label for="title" style="display: block; margin-bottom: 3px; font-size: 0.95em;">标题 *</label>
+                        <input type="text" id="title" name="title" class="input-field" style="padding: 8px;" required>
+                    </div>
+
+                    <div style="margin-bottom: 12px;">
+                        <label for="category" style="display: block; margin-bottom: 3px; font-size: 0.95em;">分类 *</label>
+                        <select id="category" name="category" class="input-field" style="padding: 8px;" required>
+                            <option value="">请选择分类</option>
+                            <% categories.forEach(category => { %>
+                                <option value="<%= category.id %>"><%= category.name %></option>
+                            <% }); %>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom: 12px;">
+                        <div class="editor-toolbar" style="padding: 8px; font-size: 0.85em;">
+                            <button type="button" class="toolbar-button" onclick="insertMarkdown('**粗体文本**')" style="padding: 4px 8px; font-size: 0.8em;">粗体</button>
+                            <button type="button" class="toolbar-button" onclick="insertMarkdown('*斜体文本*')" style="padding: 4px 8px; font-size: 0.8em;">斜体</button>
+                            <button type="button" class="toolbar-button" onclick="insertMarkdown('\n# 标题\n')" style="padding: 4px 8px; font-size: 0.8em;">标题</button>
+                            <button type="button" class="toolbar-button" onclick="insertMarkdown('[链接文字](http://example.com)')" style="padding: 4px 8px; font-size: 0.8em;">链接</button>
+                            <button type="button" class="toolbar-button" onclick="insertMarkdown('`代码`')" style="padding: 4px 8px; font-size: 0.8em;">代码</button>
+                            <button type="button" class="toolbar-button" onclick="insertMarkdown('\n```\n代码块\n```\n')" style="padding: 4px 8px; font-size: 0.8em;">代码块</button>
+                            <button type="button" class="toolbar-button" onclick="insertMarkdown('> 引用')" style="padding: 4px 8px; font-size: 0.8em;">引用</button>
+                            <button type="button" class="toolbar-button" onclick="insertMarkdown('\n- 列表项\n')" style="padding: 4px 8px; font-size: 0.8em;">列表</button>
+                        </div>
+
+                        <label for="content" style="display: block; margin-bottom: 3px; font-size: 0.95em;">内容 * (支持 Markdown)</label>
+                        <textarea id="content" name="content" class="input-field" rows="12" required
+                                  oninput="updatePreview(this.value)" style="padding: 8px;"></textarea>
+                    </div>
+
+                    <div class="preview-container" style="margin-top: 15px; padding: 12px;">
+                        <h3 style="margin-top: 0; font-size: 1.1em;">预览</h3>
+                        <div id="preview" class="preview-content" style="font-size: 0.95em;">
+                            <p>在这里预览您的 Markdown 内容...</p>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="button button-primary" style="padding: 10px 15px; font-size: 1em; margin-right: 10px;">发布帖子</button>
+                    <a href="/forum" class="button button-secondary" style="padding: 10px 15px; font-size: 1em;">取消</a>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Markdown 插入函数
+        function insertMarkdown(text) {
+            const textarea = document.getElementById('content');
+            const startPos = textarea.selectionStart;
+            const endPos = textarea.selectionEnd;
+            const before = textarea.value.substring(0, startPos);
+            const selected = textarea.value.substring(startPos, endPos);
+            const after = textarea.value.substring(endPos);
+            
+            // 如果有选中文本，则将插入的 Markdown 应用到选中文本
+            let newText = text;
+            if (selected) {
+                if (text.includes('**粗体文本**')) {
+                    newText = `**${selected}**`;
+                } else if (text.includes('*斜体文本*')) {
+                    newText = `*${selected}*`;
+                } else if (text.includes('`代码`')) {
+                    newText = `\`${selected}\``;
+                } else if (text.includes('[链接文字](http://example.com)')) {
+                    newText = `[${selected}](http://example.com)`;
+                }
+            }
+            
+            textarea.value = before + newText + after;
+            textarea.focus();
+            textarea.setSelectionRange(
+                startPos + newText.length, 
+                startPos + newText.length
+            );
+            
+            // 更新预览
+            updatePreview(textarea.value);
+        }
+        
+        // 更新预览函数
+        function updatePreview(content) {
+            // 简单的 Markdown 渲染
+            let html = content
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\n/g, '<br>');
+            
+            // 标题
+            html = html.replace(/^### (.*?)(<br>|$)/gm, '<h3>$1</h3>');
+            html = html.replace(/^## (.*?)(<br>|$)/gm, '<h2>$1</h2>');
+            html = html.replace(/^# (.*?)(<br>|$)/gm, '<h1>$1</h1>');
+            
+            // 粗体
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // 斜体
+            html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            
+            // 链接
+            html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>');
+            
+            // 行内代码
+            html = html.replace(/`(.*?)`/g, '<code>$1</code>');
+            
+            // 代码块 (简单处理)
+            html = html.replace(/```([\s\S]*?)```/g, '<pre>$1</pre>');
+            
+            // 引用
+            html = html.replace(/^> (.*?)(<br>|$)/gm, '<blockquote>$1</blockquote>');
+            
+            // 无序列表
+            html = html.replace(/^- (.*?)(<br>|$)/gm, '<li>$1</li>');
+            html = html.replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>');
+            
+            // 换行处理
+            html = html.replace(/<br><br>/g, '</p><p>');
+            html = html.replace(/^(.+?)(<br>|$)/gm, '<p>$1</p>');
+            html = html.replace(/<p><\/p>/g, '');
+            
+            document.getElementById('preview').innerHTML = html || '<p>在这里预览您的 Markdown 内容...</p>';
+        }
+        
+        // 侧边栏响应式功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+            const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+            const overlay = document.getElementById('overlay');
+
+            // 检测屏幕宽度并相应处理侧边栏
+            function handleResize() {
+                if (window.innerWidth <= 768) {
+                    // 移动端：隐藏侧边栏
+                    sidebar.classList.add('hidden');
+                    // 确保移动菜单按钮显示
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.style.display = 'flex';
+                    }
+                } else {
+                    // 桌面端：显示侧边栏
+                    sidebar.classList.remove('hidden');
+                    // 隐藏移动菜单按钮
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.style.display = 'none';
+                    }
+                }
+            }
+
+            // 初始化
+            handleResize();
+
+            // 监听窗口大小变化
+            window.addEventListener('resize', handleResize);
+
+            // 移动端打开侧边栏
+            if (mobileMenuBtn) {
+                mobileMenuBtn.addEventListener('click', function() {
+                    sidebar.classList.remove('hidden');
+                    overlay.style.display = 'block';
+                    document.body.style.overflow = 'hidden'; // 防止背景滚动
+                });
+            }
+
+            // 移动端关闭侧边栏
+            if (closeSidebarBtn) {
+                closeSidebarBtn.addEventListener('click', function() {
+                    sidebar.classList.add('hidden');
+                    overlay.style.display = 'none';
+                    document.body.style.overflow = 'auto'; // 恢复背景滚动
+                });
+            }
+
+            // 点击遮罩层关闭侧边栏
+            if (overlay) {
+                overlay.addEventListener('click', function() {
+                    sidebar.classList.add('hidden');
+                    overlay.style.display = 'none';
+                    document.body.style.overflow = 'auto'; // 恢复背景滚动
+                });
+            }
+
+            // 为导航链接添加点击事件，移动端点击后关闭侧边栏
+            const navLinks = document.querySelectorAll('.nav-menu a');
+            navLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.add('hidden');
+                        if (overlay) {
+                            overlay.style.display = 'none';
+                        }
+                        document.body.style.overflow = 'auto'; // 恢复背景滚动
+                    }
+                });
+            });
+        });
+
+        // 主题管理器类
+        class ThemeManager {
+            constructor() {
+                this.currentTheme = this.getStoredTheme() || this.getSystemTheme();
+                this.init();
+            }
+
+            // 初始化主题
+            init() {
+                this.applyTheme(this.currentTheme);
+            }
+
+            // 获取存储的主题
+            getStoredTheme() {
+                return localStorage.getItem('theme');
+            }
+
+            // 获取系统主题偏好
+            getSystemTheme() {
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+                    return 'light';
+                }
+                return 'dark';
+            }
+
+            // 应用主题
+            applyTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+                this.currentTheme = theme;
+
+                // 触发主题改变事件
+                window.dispatchEvent(new CustomEvent('themeChanged', { detail: { theme } }));
+            }
+
+            // 切换主题
+            toggleTheme() {
+                const newTheme = this.currentTheme === 'dark' ? 'light' : 'dark';
+                this.applyTheme(newTheme);
+                return newTheme;
+            }
+
+            // 获取当前主题
+            getCurrentTheme() {
+                return this.currentTheme;
+            }
+
+            // 检查是否为深色模式
+            isDark() {
+                return this.currentTheme === 'dark';
+            }
+
+            // 检查是否为浅色模式
+            isLight() {
+                return this.currentTheme === 'light';
+            }
+        }
+
+        // 创建全局主题管理器实例
+        window.themeManager = new ThemeManager();
+
+        // 如果用户有保存的主题设置，优先使用用户设置
+        document.addEventListener('DOMContentLoaded', function() {
+            <% if (typeof user !== 'undefined' && user && user.theme) { %>
+                // 应用用户保存的主题设置
+                document.documentElement.setAttribute('data-theme', '<%= user.theme %>');
+                localStorage.setItem('theme', '<%= user.theme %>');
+                window.themeManager.currentTheme = '<%= user.theme %>';
+            <% } %>
+        });
+    </script>
+</body>
+</html>
