@@ -110,6 +110,26 @@
             color: #ff6b6b;
         }
 
+        .comment-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            transition: color var(--transition-fast);
+            padding: 5px;
+        }
+
+        .comment-btn:hover {
+            color: var(--accent-color);
+        }
+
+        .comment-count {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-left: 5px;
+        }
+
         .favorite-count {
             font-size: 0.85rem;
             color: var(--text-secondary);
@@ -272,6 +292,11 @@
                     <button id="searchBtn" class="button button-primary">搜索</button>
                     <button id="clearSearchBtn" class="button button-secondary">清除</button>
                 </div>
+                <div class="filter-panel" style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+                    <button id="showAllBtn" class="button button-primary">全部模块</button>
+                    <button id="showFavoritesBtn" class="button button-secondary">我的收藏</button>
+                    <span id="filterInfo" style="color: var(--text-secondary); font-size: 0.9rem;"></span>
+                </div>
 
                 <h2>功能模块</h2>
                 <% if (pageModules.length > 0) { %>
@@ -285,10 +310,10 @@
                                             ☆
                                         </button>
                                         <span class="favorite-count" id="fav-count-<%= module.dirName %>">0</span>
-                                        <button class="favorite-btn comment-btn" data-module-id="<%= module.dirName %>" title="查看评论" style="font-size: 1.2rem; margin-left: 8px;">
+                                        <button class="comment-btn" data-module-id="<%= module.dirName %>" title="查看评论" style="font-size: 1.2rem; margin-left: 8px; background: none; border: none; cursor: pointer; padding: 5px;">
                                             💬
                                         </button>
-                                        <span class="favorite-count" id="comment-count-<%= module.dirName %>">0</span>
+                                        <span class="comment-count" id="comment-count-<%= module.dirName %>">0</span>
                                         <span class="module-version">v<%= module.version %></span>
                                     </div>
                                 </div>
@@ -346,6 +371,12 @@
     <%- include('../partials/scripts'); %>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
+        // 当前用户信息
+        const currentUser = {
+            UUID: '<%= user ? user.UUID : "" %>',
+            author: '<%= user ? user.author : "" %>'
+        };
+        
         // 当前打开评论的模块 ID
         let currentModuleId = null;
         // 用户收藏的模块列表
@@ -422,6 +453,7 @@
                     }
                     updateFavoriteButtons();
                     loadFavoriteCounts();
+                    applyFilters(); // 更新筛选结果
                     alert(result.message);
                 } else {
                     alert(result.message);
@@ -452,15 +484,63 @@
         // 清除搜索
         function clearSearch() {
             document.getElementById('searchInput').value = '';
-            document.querySelectorAll('.module-card').forEach(card => {
-                card.style.display = 'block';
+            applyFilters();
+        }
+
+        // 应用筛选
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const showFavoritesOnly = document.getElementById('showFavoritesBtn').classList.contains('button-primary');
+            const moduleCards = document.querySelectorAll('#pageModulesContainer .module-card');
+
+            moduleCards.forEach(card => {
+                const moduleName = card.dataset.moduleName;
+                const moduleAuthor = card.dataset.moduleAuthor;
+                const moduleId = card.dataset.moduleId;
+
+                const matchesSearch = moduleName.includes(searchTerm) || moduleAuthor.includes(searchTerm);
+                const matchesFavorite = !showFavoritesOnly || userFavorites.includes(moduleId);
+
+                if (matchesSearch && matchesFavorite) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
             });
+
+            // 更新筛选信息
+            const filterInfo = document.getElementById('filterInfo');
+            if (showFavoritesOnly) {
+                const favCount = Array.from(moduleCards).filter(card => userFavorites.includes(card.dataset.moduleId)).length;
+                filterInfo.textContent = `显示收藏的模块 (${favCount})`;
+            } else {
+                filterInfo.textContent = '';
+            }
+        }
+
+        // 显示全部模块
+        function showAllModules() {
+            document.getElementById('showAllBtn').classList.remove('button-secondary');
+            document.getElementById('showAllBtn').classList.add('button-primary');
+            document.getElementById('showFavoritesBtn').classList.remove('button-primary');
+            document.getElementById('showFavoritesBtn').classList.add('button-secondary');
+            applyFilters();
+        }
+
+        // 显示收藏模块
+        function showFavoritesOnly() {
+            document.getElementById('showFavoritesBtn').classList.remove('button-secondary');
+            document.getElementById('showFavoritesBtn').classList.add('button-primary');
+            document.getElementById('showAllBtn').classList.remove('button-primary');
+            document.getElementById('showAllBtn').classList.add('button-secondary');
+            applyFilters();
         }
 
         // 页面加载完成后初始化
         document.addEventListener('DOMContentLoaded', function() {
             loadUserFavorites();
             loadFavoriteCounts();
+            loadAllCommentCounts();
 
             // 绑定收藏按钮事件
             document.querySelectorAll('.favorite-btn').forEach(btn => {
@@ -472,13 +552,19 @@
             });
 
             // 绑定搜索事件
-            document.getElementById('searchBtn').addEventListener('click', searchModules);
+            document.getElementById('searchBtn').addEventListener('click', function() {
+                applyFilters();
+            });
             document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
             document.getElementById('searchInput').addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
-                    searchModules();
+                    applyFilters();
                 }
             });
+
+            // 绑定筛选按钮事件
+            document.getElementById('showAllBtn').addEventListener('click', showAllModules);
+            document.getElementById('showFavoritesBtn').addEventListener('click', showFavoritesOnly);
 
             // 评论功能
             const commentModal = document.getElementById('commentModal');
@@ -571,7 +657,7 @@
                     <div class="comment-content">${comment.content}</div>
                     <div class="comment-actions">
                         <button class="comment-action-btn reply-btn" data-comment-id="${comment.id}">回复</button>
-                        ${comment.userId === '<%= user.UUID %>' || '<%= user.author %>' === 'system' ? 
+                        ${comment.userId === currentUser.UUID || currentUser.author === 'system' ?
                           '<button class="comment-action-btn delete-btn" data-comment-id="' + comment.id + '">删除</button>' : ''}
                     </div>
                     <div class="reply-form" id="reply-form-${comment.id}">
@@ -717,8 +803,29 @@
 
             // 加载评论数量
             async function loadCommentCount(moduleId) {
-                // 这里可以通过 API 获取评论数量并显示
-                // 暂时从评论列表获取
+                try {
+                    const response = await fetch(`/api/module/comments/${moduleId}`);
+                    const data = await response.json();
+                    if (data.success) {
+                        const countEl = document.getElementById(`comment-count-${moduleId}`);
+                        if (countEl) {
+                            countEl.textContent = data.comments.length;
+                        }
+                    }
+                } catch (error) {
+                    console.error(`加载模块 ${moduleId} 评论数量失败:`, error);
+                }
+            }
+
+            // 加载所有模块的评论数量
+            async function loadAllCommentCounts() {
+                const moduleCards = document.querySelectorAll('#pageModulesContainer .module-card');
+                for (const card of moduleCards) {
+                    const moduleId = card.dataset.moduleId;
+                    await loadCommentCount(moduleId);
+                    // 添加小延迟避免请求过快
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
             }
         });
     </script>

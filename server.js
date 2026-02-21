@@ -7,10 +7,14 @@ const cookieParser = require('cookie-parser');
 const session = require('express-session');
 const multer = require('multer');
 const sharp = require('sharp');
-const AdvancedEncryption = require('./encryption');
 const bodyParser = require('body-parser');
 const http = require('http');
-const ModuleSandbox = require('./module-sandbox');
+const os = require('os');
+const vm = require('vm');
+const ejs = require('ejs');
+const handlebars = require('handlebars');
+const pug = require('pug');
+const mustache = require('mustache');
 
 const app = express();
 const server = http.createServer(app);
@@ -19,9 +23,746 @@ const PORT = process.env.PORT || 5000;
 // 模块沙盒管理器
 const moduleSandboxes = new Map();
 
+// ============================================
+// 高级加密模块 (原 encryption.js)
+// ============================================
+class AdvancedEncryption {
+  constructor(secretFilePath = './data/secret.json') {
+    this.secretFilePath = secretFilePath;
+    this.ensureSecretFileExists();
+    this.loadSecrets();
+  }
+
+  ensureSecretFileExists() {
+    if (!fs.existsSync(path.dirname(this.secretFilePath))) {
+      fs.mkdirSync(path.dirname(this.secretFilePath), { recursive: true });
+    }
+
+    if (!fs.existsSync(this.secretFilePath)) {
+      const defaultStructure = {
+        main: { secret: "0000" },
+        deputy: { secret: "" },
+        system: { secret: "" },
+        file: {}
+      };
+      fs.writeFileSync(this.secretFilePath, JSON.stringify(defaultStructure, null, 2));
+    }
+  }
+
+  loadSecrets() {
+    const secretsData = JSON.parse(fs.readFileSync(this.secretFilePath, 'utf8'));
+    this.mainSecret = secretsData.main.secret;
+
+    if (secretsData.deputy && secretsData.deputy.secret && secretsData.deputy.secret !== "") {
+      try {
+        this.deputySecret = this.decryptSimple(secretsData.deputy.secret, this.mainSecret);
+      } catch (e) {
+        console.error('Failed to decrypt deputy key:', e);
+        this.deputySecret = null;
+      }
+    } else {
+      this.deputySecret = null;
+    }
+
+    if (secretsData.system && secretsData.system.secret && this.deputySecret && secretsData.system.secret !== "") {
+      try {
+        this.systemSecret = this.decryptSimple(secretsData.system.secret, this.deputySecret);
+      } catch (e) {
+        console.error('Failed to decrypt system key:', e);
+        this.systemSecret = null;
+      }
+    } else {
+      this.systemSecret = null;
+    }
+
+    this.fileSecrets = secretsData.file || {};
+    this.autoGenerateMissingKeys();
+  }
+
+  autoGenerateMissingKeys() {
+    let updated = false;
+
+    if (!this.deputySecret) {
+      this.deputySecret = this.generateRandomKey();
+      console.log('Generated new deputy key');
+      updated = true;
+    }
+
+    if (!this.systemSecret) {
+      this.systemSecret = this.generateRandomKey();
+      console.log('Generated new system key');
+      updated = true;
+    }
+
+    if (updated) {
+      this.saveSecrets();
+    }
+  }
+
+  saveSecrets() {
+    const secretsData = {
+      main: { secret: this.mainSecret },
+      deputy: {
+        secret: this.deputySecret && this.mainSecret ?
+          this.encryptSimple(this.deputySecret, this.mainSecret) : ""
+      },
+      system: {
+        secret: this.systemSecret && this.deputySecret ?
+          this.encryptSimple(this.systemSecret, this.deputySecret) : ""
+      },
+      file: this.fileSecrets
+    };
+    const jsonData = JSON.stringify(secretsData, null, 2);
+    fs.writeFileSync(this.secretFilePath, jsonData);
+
+    try {
+      fs.chmodSync(this.secretFilePath, 0o600);
+    } catch (err) {
+      console.warn('Could not set file permissions on secret file:', err.message);
+    }
+  }
+
+  encryptSimple(data, password) {
+    if (!data || !password) {
+      throw new Error('Data and password are required for encryption');
+    }
+
+    const salt = crypto.randomBytes(16).toString('hex');
+    const key = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+    let encrypted = cipher.update(data, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+
+    return `${salt}:${iv.toString('hex')}:${encrypted}`;
+  }
+
+  decryptSimple(encryptedData, password) {
+    if (!encryptedData || !password) {
+      throw new Error('Encrypted data and password are required for decryption');
+    }
+
+    const parts = encryptedData.split(':');
+    if (parts.length !== 3) {
+      throw new Error('Invalid encrypted data format');
+    }
+
+    const [salt, ivHex, encrypted] = parts;
+    const key = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
+    const iv = Buffer.from(ivHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  }
+
+  generateSalt(seed = null) {
+    const seedValue = seed || this.mainSecret;
+    const platform = os.platform();
+    const arch = os.arch();
+    const release = os.release();
+    const hostname = os.hostname();
+    const time = Date.now().toString();
+    const primaryEntropy = crypto.randomBytes(32).toString('hex');
+
+    const cpus = os.cpus();
+    const totalCpuTime = cpus.reduce((acc, cpu) => {
+      const times = cpu.times;
+      return acc + times.user + times.nice + times.sys + times.idle;
+    }, 0);
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = totalMem - freeMem;
+
+    const saltBase = `${primaryEntropy}${seedValue}${platform}${arch}${release}${hostname}${time}${totalCpuTime}${usedMem}`;
+    return crypto.createHash('sha256').update(saltBase).digest('hex');
+  }
+
+  deriveKey(password, salt, keyLen = 32) {
+    if (!password || !salt) {
+      throw new Error('Password and salt are required for key derivation');
+    }
+    return crypto.pbkdf2Sync(password, salt, 100000, keyLen, 'sha256');
+  }
+
+  createFileKey(content) {
+    return crypto.createHash('md5').update(content).digest('hex');
+  }
+
+  generateSystemKey() {
+    const time = Math.floor(Date.now() / (10 * 24 * 60 * 60 * 1000));
+    const platform = os.platform();
+    const arch = os.arch();
+    const release = os.release();
+    const hostname = os.hostname();
+    const entropy = crypto.randomBytes(16).toString('hex');
+    return `${time}${platform}${arch}${release}${hostname}${entropy}`;
+  }
+
+  generateRandomKey() {
+    return crypto.randomBytes(32).toString('hex');
+  }
+
+  encrypt(content, filePath = null) {
+    const fileKey = this.createFileKey(content);
+
+    if (filePath) {
+      this.fileSecrets[filePath] = { secret: fileKey };
+      this.saveSecrets();
+    }
+
+    const salt1 = this.generateSalt(fileKey);
+    const derivedFileKey = this.deriveKey(fileKey, salt1);
+    const iv1 = crypto.randomBytes(16);
+    const cipher1 = crypto.createCipheriv('aes-256-cbc', derivedFileKey, iv1);
+    let encryptedContent = cipher1.update(content, 'utf8', 'hex');
+    encryptedContent += cipher1.final('hex');
+
+    let encryptedFileKey = '';
+    let salt2 = '';
+    let iv2Str = '';
+    if (this.systemSecret) {
+      salt2 = this.generateSalt(this.systemSecret);
+      const derivedSystemKey = this.deriveKey(this.systemSecret, salt2);
+      const iv2 = crypto.randomBytes(16);
+      const cipher2 = crypto.createCipheriv('aes-256-cbc', derivedSystemKey, iv2);
+      encryptedFileKey = cipher2.update(fileKey, 'utf8', 'hex');
+      encryptedFileKey += cipher2.final('hex');
+      iv2Str = iv2.toString('hex');
+    } else {
+      encryptedFileKey = fileKey;
+      salt2 = this.generateSalt(fileKey);
+      iv2Str = '';
+    }
+
+    let encryptedSystemKey = '';
+    let salt3 = '';
+    let iv3Str = '';
+    if (this.mainSecret && this.systemSecret) {
+      salt3 = this.generateSalt(this.mainSecret);
+      const derivedMainKey = this.deriveKey(this.mainSecret, salt3);
+      const iv3 = crypto.randomBytes(16);
+      const cipher3 = crypto.createCipheriv('aes-256-cbc', derivedMainKey, iv3);
+      encryptedSystemKey = cipher3.update(this.systemSecret, 'utf8', 'hex');
+      encryptedSystemKey += cipher3.final('hex');
+      iv3Str = iv3.toString('hex');
+    } else if (this.mainSecret) {
+      salt3 = this.generateSalt(this.mainSecret);
+      const derivedMainKey = this.deriveKey(this.mainSecret, salt3);
+      const iv3 = crypto.randomBytes(16);
+      const cipher3 = crypto.createCipheriv('aes-256-cbc', derivedMainKey, iv3);
+      encryptedSystemKey = cipher3.update(fileKey, 'utf8', 'hex');
+      encryptedSystemKey += cipher3.final('hex');
+      iv3Str = iv3.toString('hex');
+    } else {
+      encryptedSystemKey = fileKey;
+      salt3 = this.generateSalt(fileKey);
+      iv3Str = '';
+    }
+
+    return {
+      encryptedContent: encryptedContent,
+      encryptedFileKey: encryptedFileKey,
+      encryptedSystemKey: encryptedSystemKey,
+      salt1: salt1,
+      salt2: salt2,
+      salt3: salt3,
+      iv1: iv1.toString('hex'),
+      iv2: iv2Str,
+      iv3: iv3Str,
+      algorithm: 'aes-256-cbc'
+    };
+  }
+
+  decrypt(encryptedData, filePath = null) {
+    try {
+      let decryptedSystemKey;
+      let actualFileKey;
+
+      if (this.mainSecret && encryptedData.iv3 && encryptedData.iv3 !== '') {
+        const salt3 = encryptedData.salt3;
+        const derivedMainKey = this.deriveKey(this.mainSecret, salt3);
+        const iv3 = Buffer.from(encryptedData.iv3, 'hex');
+        const decipher3 = crypto.createDecipheriv(encryptedData.algorithm, derivedMainKey, iv3);
+        let decryptedWithMain = decipher3.update(encryptedData.encryptedSystemKey, 'hex', 'utf8');
+        decryptedWithMain += decipher3.final('utf8');
+
+        if (this.systemSecret) {
+          decryptedSystemKey = decryptedWithMain;
+        } else {
+          actualFileKey = decryptedWithMain;
+        }
+      } else {
+        decryptedSystemKey = encryptedData.encryptedSystemKey;
+      }
+
+      let decryptedFileKey;
+
+      if (actualFileKey !== undefined) {
+        decryptedFileKey = actualFileKey;
+      } else {
+        if (this.systemSecret && encryptedData.iv2 && encryptedData.iv2 !== '') {
+          const salt2 = encryptedData.salt2;
+          const derivedSystemKey = this.deriveKey(this.systemSecret, salt2);
+          const iv2 = Buffer.from(encryptedData.iv2, 'hex');
+          const decipher2 = crypto.createDecipheriv(encryptedData.algorithm, derivedSystemKey, iv2);
+          try {
+            decryptedFileKey = decipher2.update(encryptedData.encryptedFileKey, 'hex', 'utf8');
+            decryptedFileKey += decipher2.final('utf8');
+          } catch (decryptError) {
+            decryptedFileKey = encryptedData.encryptedFileKey;
+          }
+        } else {
+          decryptedFileKey = encryptedData.encryptedFileKey;
+        }
+      }
+
+      const salt1 = encryptedData.salt1;
+      const derivedFileKey = this.deriveKey(decryptedFileKey, salt1);
+      const iv1 = Buffer.from(encryptedData.iv1, 'hex');
+      const decipher1 = crypto.createDecipheriv(encryptedData.algorithm, derivedFileKey, iv1);
+      let decryptedContent = decipher1.update(encryptedData.encryptedContent, 'hex', 'utf8');
+      decryptedContent += decipher1.final('utf8');
+
+      return decryptedContent;
+    } catch (error) {
+      console.error('Decryption failed:', error);
+      throw new Error('Decryption failed: Invalid key or corrupted data');
+    }
+  }
+
+  updateMainSecret(newSecret) {
+    if (!/^[a-zA-Z0-9]+$/.test(newSecret)) {
+      throw new Error('Main secret must contain only letters and numbers');
+    }
+
+    const oldMainSecret = this.mainSecret;
+    this.mainSecret = newSecret;
+
+    if (this.deputySecret) {
+      const encryptedDeputyWithOldMain = JSON.parse(fs.readFileSync(this.secretFilePath, 'utf8')).deputy.secret;
+      let decryptedDeputy;
+      try {
+        decryptedDeputy = this.decryptSimple(encryptedDeputyWithOldMain, oldMainSecret);
+      } catch (e) {
+        console.error('Could not decrypt old deputy key with old main key');
+      }
+
+      if (decryptedDeputy) {
+        this.deputySecret = decryptedDeputy;
+      }
+    }
+
+    this.saveSecrets();
+  }
+
+  updateDeputySecret(newSecret = null, reencryptCallback = null) {
+    if (newSecret === null) {
+      newSecret = this.generateRandomKey();
+    } else if (newSecret.length !== 64) {
+      throw new Error('Deputy secret must be a 256-bit hex string (64 characters)');
+    }
+
+    const backupDeputySecret = this.deputySecret;
+
+    try {
+      this.deputySecret = newSecret;
+      this.saveSecrets();
+
+      if (reencryptCallback) {
+        reencryptCallback(this);
+      }
+    } catch (error) {
+      this.deputySecret = backupDeputySecret;
+      this.saveSecrets();
+      throw error;
+    }
+  }
+
+  updateSystemSecret(newSecret = null, reencryptCallback = null) {
+    if (newSecret === null) {
+      newSecret = this.generateRandomKey();
+    } else if (newSecret.length !== 64) {
+      throw new Error('System secret must be a 256-bit hex string (64 characters)');
+    }
+
+    const backupSystemSecret = this.systemSecret;
+
+    try {
+      this.systemSecret = newSecret;
+      this.saveSecrets();
+
+      if (reencryptCallback) {
+        reencryptCallback(this);
+      }
+    } catch (error) {
+      this.systemSecret = backupSystemSecret;
+      this.saveSecrets();
+      throw error;
+    }
+  }
+
+  needsSystemKeyRotation() {
+    if (!this.systemSecret) return true;
+    return false;
+  }
+
+  rotateKeys(allEncryptedData) {
+    const backupMainSecret = this.mainSecret;
+    const backupDeputySecret = this.deputySecret;
+    const backupSystemSecret = this.systemSecret;
+    const backupFileSecrets = { ...this.fileSecrets };
+
+    try {
+      const newDeputySecret = this.generateRandomKey();
+      const newSystemSecret = this.generateRandomKey();
+
+      const oldDeputySecret = this.deputySecret;
+      const oldSystemSecret = this.systemSecret;
+      this.deputySecret = newDeputySecret;
+      this.systemSecret = newSystemSecret;
+
+      const reencryptedData = {};
+      for (const [key, encryptedEntry] of Object.entries(allEncryptedData)) {
+        try {
+          const decryptedContent = this.decrypt(encryptedEntry);
+          reencryptedData[key] = this.encrypt(decryptedContent);
+        } catch (decryptError) {
+          console.error(`Failed to decrypt and re-encrypt data for key ${key}:`, decryptError);
+          reencryptedData[key] = encryptedEntry;
+        }
+      }
+
+      this.saveSecrets();
+
+      return reencryptedData;
+    } catch (error) {
+      this.mainSecret = backupMainSecret;
+      this.deputySecret = backupDeputySecret;
+      this.systemSecret = backupSystemSecret;
+      this.fileSecrets = backupFileSecrets;
+      this.saveSecrets();
+
+      throw new Error(`Key rotation failed: ${error.message}`);
+    }
+  }
+
+  getMainSecret() {
+    return this.mainSecret;
+  }
+
+  getDeputySecret() {
+    return this.deputySecret;
+  }
+
+  getSystemSecret() {
+    return this.systemSecret;
+  }
+
+  getFileSecrets() {
+    return this.fileSecrets;
+  }
+}
+
+// ============================================
+// 模块沙盒管理系统 (原 module-sandbox.js)
+// ============================================
+class ModuleSandbox {
+  constructor(modulePath, moduleConfig, app) {
+    this.modulePath = modulePath;
+    this.config = moduleConfig;
+    this.app = app;
+    this.sandbox = null;
+    this.context = null;
+    this.initialized = false;
+
+    this.initSandbox();
+  }
+
+  static migrateConfig(config, moduleDir) {
+    const migratedConfig = { ...config };
+    let needsMigration = false;
+    let migrationNotes = [];
+
+    if (!config.description) {
+      migratedConfig.description = config.intro || '模块描述';
+      needsMigration = true;
+      migrationNotes.push('添加了 description 字段');
+    }
+
+    if (!config.author) {
+      migratedConfig.author = '未知作者';
+      needsMigration = true;
+      migrationNotes.push('添加了 author 字段');
+    }
+
+    if (!config.viewEngine) {
+      const ext = path.extname(config.main || '').toLowerCase();
+      if (ext === '.hbs') {
+        migratedConfig.viewEngine = 'handlebars';
+      } else if (ext === '.pug') {
+        migratedConfig.viewEngine = 'pug';
+      } else if (ext === '.mustache') {
+        migratedConfig.viewEngine = 'mustache';
+      } else {
+        migratedConfig.viewEngine = 'ejs';
+      }
+      needsMigration = true;
+      migrationNotes.push(`添加了 viewEngine 字段 (推断为 ${migratedConfig.viewEngine})`);
+    }
+
+    if (!config.language) {
+      migratedConfig.language = 'javascript';
+      needsMigration = true;
+      migrationNotes.push('添加了 language 字段');
+    }
+
+    if (!config.permissions) {
+      migratedConfig.permissions = ['read'];
+      needsMigration = true;
+      migrationNotes.push('添加了 permissions 字段');
+    }
+
+    if (!config.dependencies) {
+      migratedConfig.dependencies = [];
+      needsMigration = true;
+      migrationNotes.push('添加了 dependencies 字段');
+    }
+
+    if (!config.routes) {
+      migratedConfig.routes = [];
+      needsMigration = true;
+      migrationNotes.push('添加了 routes 字段');
+    }
+
+    if (config.main && /\.(ejs|hbs|pug|mustache)$/.test(config.main)) {
+      const baseName = path.basename(config.main, path.extname(config.main));
+      const jsEntryPoint = path.join(moduleDir, `${baseName}.js`);
+
+      if (!fs.existsSync(path.join(moduleDir, config.main.replace(/^\//, '')))) {
+        migratedConfig.main = `${baseName}.js`;
+        needsMigration = true;
+        migrationNotes.push(`更新了 main 字段为 ${migratedConfig.main}`);
+      }
+    }
+
+    if (needsMigration) {
+      console.log(`模块 ${config.name || moduleDir} 配置迁移：`, migrationNotes.join(', '));
+    }
+
+    return migratedConfig;
+  }
+
+  static saveMigratedConfig(modulePath, config) {
+    const settingPath = path.join(modulePath, 'setting.json');
+    try {
+      fs.writeFileSync(settingPath, JSON.stringify(config, null, 2), 'utf8');
+      console.log(`模块配置已自动更新：${modulePath}`);
+    } catch (error) {
+      console.error(`保存迁移配置失败 ${modulePath}:`, error);
+    }
+  }
+
+  initSandbox() {
+    const restrictedGlobals = {
+      console: {
+        log: (...args) => console.log(`[Module ${this.config.name}]`, ...args),
+        error: (...args) => console.error(`[Module ${this.config.name}]`, ...args),
+        warn: (...args) => console.warn(`[Module ${this.config.name}]`, ...args),
+        info: (...args) => console.info(`[Module ${this.config.name}]`, ...args)
+      },
+      process: {
+        env: {},
+        version: process.version
+      },
+      Buffer: Buffer,
+      setTimeout: setTimeout,
+      clearTimeout: clearTimeout,
+      setInterval: setInterval,
+      clearInterval: clearInterval,
+      setImmediate: setImmediate,
+      clearImmediate: clearImmediate
+    };
+
+    this.sandbox = vm.createContext({
+      ...restrictedGlobals,
+      module: { exports: {} },
+      exports: {},
+      require: this.createRestrictedRequire(),
+      __moduleName: this.config.name,
+      __moduleVersion: this.config.version,
+      __modulePath: this.modulePath
+    });
+
+    this.initialized = true;
+  }
+
+  createRestrictedRequire() {
+    const allowedModules = [
+      'path',
+      'fs',
+      'crypto',
+      'util',
+      'events',
+      'stream',
+      'querystring',
+      'url'
+    ];
+
+    return (moduleName) => {
+      if (!allowedModules.includes(moduleName)) {
+        throw new Error(`Module '${moduleName}' is not allowed in sandbox`);
+      }
+      return require(moduleName);
+    };
+  }
+
+  loadModuleCode() {
+    const mainFile = path.join(this.modulePath, this.config.main);
+
+    if (!fs.existsSync(mainFile)) {
+      throw new Error(`Module main file not found: ${mainFile}`);
+    }
+
+    // 检查文件扩展名，如果不是 JS 文件，返回空对象
+    const ext = path.extname(mainFile).toLowerCase();
+    if (!['.js', '.mjs', '.cjs'].includes(ext)) {
+      // 非 JavaScript 文件，返回空模块导出
+      return {
+        init: () => {},
+        api: null
+      };
+    }
+
+    const code = fs.readFileSync(mainFile, 'utf8');
+
+    try {
+      const script = new vm.Script(code, {
+        filename: mainFile,
+        displayErrors: true
+      });
+
+      const result = script.runInContext(this.sandbox);
+      return this.sandbox.module.exports || result;
+    } catch (error) {
+      console.error(`Error loading module ${this.config.name}:`, error);
+      throw error;
+    }
+  }
+
+  renderView(viewName, data) {
+    const viewEngine = this.config.viewEngine || 'ejs';
+    const viewPath = path.join(this.modulePath, 'views', `${viewName}.${this.getViewExtension(viewEngine)}`);
+
+    if (!fs.existsSync(viewPath)) {
+      throw new Error(`View file not found: ${viewPath}`);
+    }
+
+    const viewContent = fs.readFileSync(viewPath, 'utf8');
+
+    try {
+      switch (viewEngine) {
+        case 'ejs':
+          return this.renderEJS(viewContent, data);
+        case 'handlebars':
+          return this.renderHandlebars(viewContent, data);
+        case 'pug':
+          return this.renderPug(viewPath, data);
+        case 'mustache':
+          return this.renderMustache(viewContent, data);
+        default:
+          return this.renderEJS(viewContent, data);
+      }
+    } catch (error) {
+      console.error(`Error rendering view ${viewName}:`, error);
+      throw error;
+    }
+  }
+
+  getViewExtension(engine) {
+    const extensions = {
+      'ejs': 'ejs',
+      'handlebars': 'hbs',
+      'pug': 'pug',
+      'mustache': 'mustache'
+    };
+    return extensions[engine] || 'ejs';
+  }
+
+  renderEJS(content, data) {
+    return new Promise((resolve, reject) => {
+      ejs.render(content, data, {
+        filename: 'module-view',
+        async: true
+      }, (err, html) => {
+        if (err) reject(err);
+        else resolve(html);
+      });
+    });
+  }
+
+  renderHandlebars(content, data) {
+    const template = handlebars.compile(content);
+    return template(data);
+  }
+
+  renderPug(viewPath, data) {
+    return pug.renderFile(viewPath, data);
+  }
+
+  renderMustache(content, data) {
+    return mustache.render(content, data);
+  }
+
+  executeAPI(method, path, params) {
+    const moduleExports = this.loadModuleCode();
+
+    if (typeof moduleExports.api === 'function') {
+      return Promise.resolve(moduleExports.api(method, path, params));
+    }
+
+    return Promise.reject(new Error('Module does not export an API function'));
+  }
+
+  destroy() {
+    this.sandbox = null;
+    this.context = null;
+    this.initialized = false;
+  }
+}
+
 // 配置视图引擎
 app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
+
+// 视图路径映射 - 保持原有访问路径不变
+const viewPathMap = {
+  'settings': path.join(__dirname, 'views', 'user', 'settings.ejs'),
+  'intro': path.join(__dirname, 'views', 'user', 'intro.ejs'),
+  'update-log': path.join(__dirname, 'views', 'system', 'update-log.ejs'),
+  'layout': path.join(__dirname, 'views', 'system', 'layout.ejs')
+};
+
+// 设置多个 views 目录
+app.set('views', [
+  path.join(__dirname, 'views'),
+  path.join(__dirname, 'views', 'user'),
+  path.join(__dirname, 'views', 'system')
+]);
+
+// 自定义 EJS 引擎来支持路径映射
+const originalRenderFile = ejs.renderFile;
+
+ejs.renderFile = function(filePath, data, options, callback) {
+  // 如果是映射的视图名称，使用映射后的路径
+  const viewName = path.basename(filePath, '.ejs');
+  if (viewPathMap[viewName] && fs.existsSync(viewPathMap[viewName])) {
+    return originalRenderFile(viewPathMap[viewName], data, options, callback);
+  }
+  return originalRenderFile(filePath, data, options, callback);
+};
+
+app.engine('ejs', ejs.__express);
 
 // 中间件
 app.use(express.static(path.join(__dirname, 'public')));
