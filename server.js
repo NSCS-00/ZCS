@@ -15,6 +15,10 @@ const ejs = require('ejs');
 const handlebars = require('handlebars');
 const pug = require('pug');
 const mustache = require('mustache');
+const { BSIO, LogLevel } = require('./bsio');
+
+// 初始化 BSIO
+const bsio = new BSIO({ logLevel: LogLevel.DEBUG, showColors: true });
 
 const app = express();
 const server = http.createServer(app);
@@ -84,13 +88,13 @@ class AdvancedEncryption {
 
     if (!this.deputySecret) {
       this.deputySecret = this.generateRandomKey();
-      console.log('Generated new deputy key');
+      bsio.info('Generated new deputy key');
       updated = true;
     }
 
     if (!this.systemSecret) {
       this.systemSecret = this.generateRandomKey();
-      console.log('Generated new system key');
+      bsio.info('Generated new system key');
       updated = true;
     }
 
@@ -548,7 +552,7 @@ class ModuleSandbox {
     }
 
     if (needsMigration) {
-      console.log(`模块 ${config.name || moduleDir} 配置迁移：`, migrationNotes.join(', '));
+      bsio.info(`模块 ${config.name || moduleDir} 配置迁移：`, migrationNotes.join(', '));
     }
 
     return migratedConfig;
@@ -558,7 +562,7 @@ class ModuleSandbox {
     const settingPath = path.join(modulePath, 'setting.json');
     try {
       fs.writeFileSync(settingPath, JSON.stringify(config, null, 2), 'utf8');
-      console.log(`模块配置已自动更新：${modulePath}`);
+      bsio.info(`模块配置已自动更新：${modulePath}`);
     } catch (error) {
       console.error(`保存迁移配置失败 ${modulePath}:`, error);
     }
@@ -567,10 +571,10 @@ class ModuleSandbox {
   initSandbox() {
     const restrictedGlobals = {
       console: {
-        log: (...args) => console.log(`[Module ${this.config.name}]`, ...args),
-        error: (...args) => console.error(`[Module ${this.config.name}]`, ...args),
-        warn: (...args) => console.warn(`[Module ${this.config.name}]`, ...args),
-        info: (...args) => console.info(`[Module ${this.config.name}]`, ...args)
+        log: (...args) => bsio.log(`[Module ${this.config.name}] ${args.join(' ')}`, LogLevel.DEBUG),
+        error: (...args) => bsio.error(`[Module ${this.config.name}] ${args.join(' ')}`),
+        warn: (...args) => bsio.warning(`[Module ${this.config.name}] ${args.join(' ')}`),
+        info: (...args) => bsio.info(`[Module ${this.config.name}] ${args.join(' ')}`)
       },
       process: {
         env: {},
@@ -915,12 +919,18 @@ function initializeDatabase() {
       updated = true;
     }
 
+    // 确保 users 字段存在
+    if (!db.users) {
+      db.users = [];
+      updated = true;
+    }
+
     // 检查是否已有系统管理员用户
     const systemUserExists = db.users.some(user => user.UUID === "0000-0000-0000-0000");
     if (!systemUserExists && db.users.length > 0) {
       // 如果没有系统管理员用户但有其他用户，发出警告
-      console.warn("警告：数据库中没有系统管理员用户 (UUID: 0000-0000-0000-0000)");
-      console.warn("请确保第一个用户注册以获得系统权限");
+      bsio.warning("警告：数据库中没有系统管理员用户 (UUID: 0000-0000-0000-0000)");
+      bsio.warning("请确保第一个用户注册以获得系统权限");
     }
 
     if (updated) {
@@ -959,28 +969,38 @@ const CACHE_DURATION = 5000; // 5秒缓存
 
 // 读取数据库（带缓存）
 function readDatabase() {
-  const currentTime = Date.now();
+  try {
+    const currentTime = Date.now();
 
-  // 如果缓存有效且未过期，返回缓存
-  if (dbCache && (currentTime - cacheTimestamp) < CACHE_DURATION) {
+    // 如果缓存有效且未过期，返回缓存
+    if (dbCache && (currentTime - cacheTimestamp) < CACHE_DURATION) {
+      return dbCache;
+    }
+
+    // 否则读取文件并更新缓存
+    const data = fs.readFileSync(DB_PATH, 'utf8');
+    dbCache = JSON.parse(data);
+    cacheTimestamp = currentTime;
     return dbCache;
+  } catch (error) {
+    bsio.error(`数据库访问错误：IO 失败 - ${error.message}`);
+    throw error;
   }
-
-  // 否则读取文件并更新缓存
-  const data = fs.readFileSync(DB_PATH, 'utf8');
-  dbCache = JSON.parse(data);
-  cacheTimestamp = currentTime;
-  return dbCache;
 }
 
 // WebSocket连接处理
 
 // 写入数据库（同时更新缓存）
 function writeDatabase(data) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
-  // 更新缓存
-  dbCache = data;
-  cacheTimestamp = Date.now();
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+    // 更新缓存
+    dbCache = data;
+    cacheTimestamp = Date.now();
+  } catch (error) {
+    bsio.error(`数据库访问错误：IO 失败 - ${error.message}`);
+    throw error;
+  }
 }
 
 
@@ -1007,8 +1027,13 @@ function getUserById(id) {
 
 // 获取用户信息通过会话
 function getUserBySession(req) {
-  if (!req.session.userId) return null;
-  return getUserById(req.session.userId);
+  try {
+    if (!req.session || !req.session.userId) return null;
+    return getUserById(req.session.userId);
+  } catch (error) {
+    bsio.error(`会话错误：获取用户信息失败 - ${error.message}`);
+    return null;
+  }
 }
 
 // 检查权限
@@ -1071,6 +1096,7 @@ initializeDatabase();
 // 中间件：检查登录状态
 function requireAuth(req, res, next) {
   if (!req.session.userId) {
+    bsio.warning(`权限验证失败：未登录用户访问 ${req.path}`);
     return res.redirect('/login');
   }
   next();
@@ -1080,6 +1106,7 @@ function requireAuth(req, res, next) {
 function requireAdmin(req, res, next) {
   const user = getUserBySession(req);
   if (!user || (user.author !== 'admin' && user.author !== 'system')) {
+    bsio.warning(`权限验证失败：用户 ${user ? user.name : '未知'} 尝试访问管理员页面 ${req.path}`);
     return res.status(403).send('权限不足');
   }
   next();
@@ -1089,6 +1116,7 @@ function requireAdmin(req, res, next) {
 function requireSystem(req, res, next) {
   const user = getUserBySession(req);
   if (!user || user.author !== 'system') {
+    bsio.warning(`权限验证失败：用户 ${user ? user.name : '未知'} 尝试访问系统页面 ${req.path}`);
     return res.status(403).send('权限不足');
   }
   next();
@@ -1488,7 +1516,11 @@ app.post('/panel/users/:id', requireAdmin, (req, res) => {
 
     // 更新用户信息
     if (name) db.users[userIndex].name = name;
-    if (author && currentUser.author === 'system') db.users[userIndex].author = author;
+    if (author && currentUser.author === 'system') {
+      const oldAuthor = db.users[userIndex].author;
+      db.users[userIndex].author = author;
+      bsio.warning(`修改用户权限：${targetUserId} ${oldAuthor}->${author}`);
+    }
     if (points) db.users[userIndex].points = parseInt(points);
     if (avatar) db.users[userIndex].avatar = avatar;
 
@@ -1526,7 +1558,9 @@ app.delete('/panel/users/:id', requireAdmin, (req, res) => {
   db.users.splice(userIndex, 1);
   db.stats.userCount = db.users.length;
   writeDatabase(db);
-  
+
+  bsio.warning(`删除用户：${targetUserId}`);
+
   res.json({ success: true });
 });
 
@@ -1573,6 +1607,8 @@ app.post('/panel/users', requireAdmin, (req, res) => {
     fs.mkdirSync(userDir, { recursive: true });
   }
 
+  bsio.debug(`创建用户：${name} (权限：${author})`);
+
   res.redirect('/panel/users');
 });
 
@@ -1584,6 +1620,7 @@ app.get('/panel/system', requireSystem, (req, res) => {
 
 // 重启服务器（仅system权限）
 app.post('/panel/system/restart', requireSystem, (req, res) => {
+  bsio.warning('注意，服务器即将重启');
   res.send('服务器将在几秒后重启...');
   setTimeout(() => {
     process.exit(0);
@@ -1592,6 +1629,7 @@ app.post('/panel/system/restart', requireSystem, (req, res) => {
 
 // 关闭服务器（仅system权限）
 app.post('/panel/system/shutdown', requireSystem, (req, res) => {
+  bsio.warning('注意，服务器即将关闭');
   res.send('服务器正在关闭...');
   setTimeout(() => {
     process.exit(0);
@@ -1785,23 +1823,28 @@ function readModules() {
 // 初始化模块沙盒
 function initModuleSandboxes() {
   const modules = readModules();
-  
+  const loadedModules = [];
+
   for (const module of modules) {
     try {
       const sandbox = new ModuleSandbox(module.path, module, app);
       moduleSandboxes.set(module.dirName, sandbox);
-      
+
       // 加载模块代码并初始化
       const moduleExports = sandbox.loadModuleCode();
       if (typeof moduleExports.init === 'function') {
         moduleExports.init(sandbox.sandbox, module);
       }
-      
-      console.log(`模块沙盒已初始化：${module.name} v${module.version}`);
+
+      bsio.info(`模块沙盒已初始化`);
+      loadedModules.push(`${module.name} v${module.version}`);
     } catch (error) {
-      console.error(`初始化模块沙盒失败 ${module.name}:`, error);
+      bsio.error(`模块沙盒无法加载${module.name}模块,错误信息:`);
+	  bsio.error(`${error.message}`);
     }
   }
+
+  return loadedModules;
 }
 
 // 模块列表页面
@@ -2648,10 +2691,78 @@ app.post('/forum/post/:postId/edit', requireAuth, (req, res) => {
   res.redirect(`/forum/post/${postId}`);
 });
 
+// 404 错误处理
+app.use((req, res, next) => {
+  bsio.error(`404 错误：${req.method} ${req.path} - 路由不存在`);
+  res.status(404).send('页面不存在');
+});
+
+// 500 错误处理
+app.use((err, req, res, next) => {
+  bsio.error(`500 错误：${req.method} ${req.path} - ${err.message}`);
+  console.error(err.stack);
+  res.status(500).send('服务器内部错误');
+});
+
+// 启动前检查
+function preStartCheck() {
+  // 打印系统信息
+  const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+  bsio.printSystemInfo({
+    nodeVersion: process.version,
+    npmVersion: 'N/A',
+    zcsVersion: packageJson.version || 'N/A'
+  });
+
+  // 初始化模块沙盒，获取已加载模块列表（在文件检查前显示）
+  const loadedModules = initModuleSandboxes();
+  if (loadedModules && loadedModules.length > 0) {
+    bsio.printLoadedModules(loadedModules);
+  }
+
+  // 检查并补充关键文件
+  const filesToCheck = [
+    { path: path.join(__dirname, 'data', 'server.json'), default: { users: [], stats: { visitCount: 0, userCount: 0 }, 'update-log': [], forum: { posts: [], categories: [{ id: 'general', name: '综合讨论', description: '一般性话题讨论区' }, { id: 'tech', name: '技术交流', description: '技术相关话题讨论区' }, { id: 'feedback', name: '意见反馈', description: '对零核服务器的意见和建议' }] }, modules: { favorites: {}, comments: {} } } },
+    { path: path.join(__dirname, 'data', 'secret.json'), default: { main: { secret: '0000' }, deputy: { secret: '' }, system: { secret: '' }, file: {} } },
+    { path: path.join(__dirname, 'module', 'data', 'comments.json'), default: { comments: {} } }
+  ];
+
+  const missingFiles = [];
+
+  filesToCheck.forEach(file => {
+    const relativePath = path.relative(__dirname, file.path);
+    if (!fs.existsSync(file.path)) {
+      missingFiles.push({ path: file.path, relative: relativePath, default: file.default });
+      bsio.warning(`检查 [${relativePath}] - 缺失`);
+    } else {
+      bsio.info(`检查 [${relativePath}]`);
+    }
+  });
+  bsio.info(`共检查${filesToCheck.length}个文件，缺失文件${missingFiles.length}个`);
+  // 补充缺失文件
+  if (missingFiles.length > 0) {
+    bsio.info(`开始补充缺失文件......`);
+    missingFiles.forEach(file => {
+      const dir = path.dirname(file.path);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const content = typeof file.default === 'object' ? JSON.stringify(file.default, null, 2) : file.default;
+      fs.writeFileSync(file.path, content);
+      bsio.info(`补充 [${file.relative}]`);
+    });
+    bsio.info(`缺失文件补充完成`);
+  }
+
+  bsio.printSeparator('-', 50);
+
+  // 打印其它日志
+}
+
+// 启动前检查
+preStartCheck();
+
 // 启动服务器
 server.listen(PORT, () => {
-  console.log(`零核服务器运行在 http://localhost:${PORT}`);
-  
-  // 初始化模块沙盒
-  initModuleSandboxes();
+  bsio.info(`零核服务器运行在 http://localhost:${PORT}`);
 });
