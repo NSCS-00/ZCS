@@ -1,0 +1,81 @@
+<aside id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+        <div class="sidebar-brand">
+            <img src="/favicon.ico" alt="零核服务器" class="sidebar-logo" width="24" height="24">
+            <div class="sidebar-title">零核服务器</div>
+        </div>
+        <button id="closeSidebarBtn" class="close-btn">&times;</button>
+    </div>
+
+    <div class="sidebar-user-info">
+        <% if (typeof user !== 'undefined' && user) { %>
+            <div class="avatar-container">
+                <a href="/<%= user.UUID %>/intro" style="display: block;">
+                    <img src="<%= user.avatar || '/data/user/' + user.UUID + '/avatar.jpg' %>" alt="用户头像" class="sidebar-avatar" onerror="this.src='/images/default-avatar.png'">
+                </a>
+            </div>
+            <div class="username"><%= user.name %></div>
+            <div class="user-id"><%= user.UUID %></div>
+            <div class="user-author"><%= user.author %></div>
+            <div class="logout-btn-container">
+                <form action="/logout" method="post">
+                    <button type="submit" class="logout-btn">登出</button>
+                </form>
+            </div>
+        <% } else { %>
+            <div class="avatar-container">
+                <img src="/images/default-avatar.png" alt="默认头像" class="sidebar-avatar">
+            </div>
+            <div class="username">访客</div>
+            <div class="user-id">NULL</div>
+            <div class="user-author">-</div>
+        <% } %>
+    </div>
+
+    <ul class="nav-menu">
+        <% if (typeof user !== 'undefined' && user) { %>
+            <li>
+                <a href="/" class="nav-link <%= currentPath === '/' ? 'active' : '' %>">
+                    <span>主页</span>
+                </a>
+            </li>
+            <li>
+                <a href="/forum" class="nav-link <%= currentPath === '/forum' ? 'active' : '' %>">
+                    <span>零核论坛</span>
+                </a>
+            </li>
+            <li>
+                <a href="/modules" class="nav-link <%= currentPath === '/modules' ? 'active' : '' %>">
+                    <span>模块中心</span>
+                </a>
+            </li>
+            <li>
+                <a href="/updates" class="nav-link <%= currentPath === '/updates' ? 'active' : '' %>">
+                    <span>更新日志</span>
+                </a>
+            </li>
+            <li>
+                <a href="/settings" class="nav-link <%= currentPath === '/settings' ? 'active' : '' %>">
+                    <span>系统设置</span>
+                </a>
+            </li>
+            <% if (user && (user.author === 'admin' || user.author === 'system')) { %>
+                <li>
+                    <a href="/panel" class="nav-link <%= currentPath === '/panel' ? 'active' : '' %>">
+                        <span>管理面板</span>
+                    </a>
+                </li>
+            <% } %>
+        <% } %>
+    </ul>
+
+    <div class="sidebar-footer">
+        ©️2026 等离子工作室
+    </div>
+</aside>
+
+<!-- 移动端菜单按钮 -->
+<button id="mobileMenuBtn" class="mobile-menu-btn">☰</button>
+
+<!-- 遮罩层 -->
+<div id="overlay" class="overlay"></div>

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>零核服务器 - 系统控制</title>
+    <%- include('../partials/head'); %>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">系统控制</h1>
+        </div>
+
+        <div class="card">
+            <h2>系统公告</h2>
+            <div style="margin-bottom: 20px;">
+                <label for="announcement" class="input-label">系统公告内容 (支持Markdown格式)</label>
+                <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                    <button type="button" onclick="insertMarkdown('# ', 'announcement')" class="button button-secondary">标题</button>
+                    <button type="button" onclick="insertMarkdown('**', 'announcement', '**')" class="button button-secondary">粗体</button>
+                    <button type="button" onclick="insertMarkdown('*', 'announcement', '*')" class="button button-secondary">斜体</button>
+                    <button type="button" onclick="insertMarkdown('[', 'announcement', '](url)')" class="button button-secondary">链接</button>
+                    <button type="button" onclick="insertMarkdown('`', 'announcement', '`')" class="button button-secondary">代码</button>
+                    <button type="button" onclick="insertMarkdown('```\n', 'announcement', '\n```')" class="button button-secondary">代码块</button>
+                </div>
+                <textarea id="announcement" rows="8" class="input-field" placeholder="在这里输入系统公告内容，支持Markdown格式..."></textarea>
+                <button id="saveAnnouncementBtn" class="button button-primary" style="margin-top: 10px;">保存公告</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>加密密钥管理</h2>
+            <div style="margin-bottom: 20px;">
+                <div class="form-group">
+                    <label for="mainSecret" class="input-label">主密钥</label>
+                    <input type="password" id="mainSecret" class="input-field" placeholder="输入新的主密钥">
+                    <button id="updateMainSecretBtn" class="button button-secondary" style="margin-top: 10px;">更新主密钥</button>
+                </div>
+                <div class="form-group" style="margin-top: 20px;">
+                    <label class="input-label">副密钥</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button id="generateDeputySecretBtn" class="button button-secondary">生成新副密钥</button>
+                        <span id="deputySecretStatus" style="color: var(--text-secondary);">-</span>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 20px;">
+                    <label class="input-label">系统密钥</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button id="generateSystemSecretBtn" class="button button-secondary">生成新系统密钥</button>
+                        <span id="systemSecretStatus" style="color: var(--text-secondary);">-</span>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 20px;">
+                    <label class="input-label">密钥信息</label>
+                    <div id="secretsInfo" style="padding: 10px; background-color: var(--bg-tertiary); border-radius: 5px; margin-top: 10px;">
+                        正在加载密钥信息...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>服务器控制</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                <div class="control-card">
+                    <h3>重启服务器</h3>
+                    <p>重启服务器后，所有服务将重新启动。</p>
+                    <button id="restartBtn" class="button button-secondary" style="background: linear-gradient(135deg, #ff9800, #f57c00);">重启服务器</button>
+                </div>
+                <div class="control-card">
+                    <h3>关闭服务器</h3>
+                    <p>关闭服务器将停止所有服务，需要手动重新启动。</p>
+                    <button id="shutdownBtn" class="button button-secondary" style="background: linear-gradient(135deg, #f44336, #d32f2f);">关闭服务器</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>系统信息</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                <div>
+                    <h3>运行时信息</h3>
+                    <ul>
+                        <li>Node.js 版本: <%= process.version %></li>
+                        <li>运行平台: <%= process.platform %></li>
+                        <li>架构: <%= process.arch %></li>
+                        <li>进程ID: <%= process.pid %></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3>内存使用</h3>
+                    <ul>
+                        <li>外部内存: <%= (process.memoryUsage().external / 1024 / 1024).toFixed(2) %> MB</li>
+                        <li>堆使用量: <%= (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2) %> MB</li>
+                        <li>堆总大小: <%= (process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2) %> MB</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>导航</h2>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <a href="/panel" class="button button-primary">返回管理面板</a>
+                <a href="/" class="button button-secondary">返回主页</a>
+            </div>
+        </div>
+    </div>
+
+    <%- include('../partials/scripts'); %>
+    
+    <style>
+        .control-card {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .control-card h3 {
+            margin-top: 0;
+            color: var(--text-primary);
+        }
+        
+        .control-card p {
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+        }
+    </style>
+    
+    <script>
+        // 加载当前公告
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                const response = await fetch('/api/announcement');
+                const data = await response.json();
+                document.getElementById('announcement').value = data.announcement;
+            } catch (error) {
+                console.error('加载公告失败:', error);
+                alert('加载公告失败');
+            }
+        });
+
+        // 保存公告
+        document.getElementById('saveAnnouncementBtn').addEventListener('click', async function() {
+            const announcement = document.getElementById('announcement').value;
+
+            try {
+                const response = await fetch('/api/announcement', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ announcement: announcement })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('公告保存成功！');
+                } else {
+                    alert('保存失败：' + result.message);
+                }
+            } catch (error) {
+                console.error('保存公告失败:', error);
+                alert('保存公告时发生错误');
+            }
+        });
+
+        // 重启服务器
+        document.getElementById('restartBtn').addEventListener('click', function() {
+            if (confirm('确定要重启服务器吗？所有服务将重新启动。')) {
+                fetch('/panel/system/restart', {
+                    method: 'POST'
+                })
+                .then(response => response.text())
+                .then(data => {
+                    alert(data);
+                })
+                .catch(error => {
+                    console.error('错误:', error);
+                    alert('重启服务器时发生错误');
+                });
+            }
+        });
+
+        // 关闭服务器
+        document.getElementById('shutdownBtn').addEventListener('click', function() {
+            if (confirm('确定要关闭服务器吗？需要手动重新启动。')) {
+                fetch('/panel/system/shutdown', {
+                    method: 'POST'
+                })
+                .then(response => response.text())
+                .then(data => {
+                    alert(data);
+                })
+                .catch(error => {
+                    console.error('错误:', error);
+                    alert('关闭服务器时发生错误');
+                });
+            }
+        });
+
+        // Markdown插入函数
+        function insertMarkdown(prefix, textareaId, suffix) {
+            const textarea = document.getElementById(textareaId);
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const selectedText = textarea.value.substring(start, end);
+
+            let newText;
+            if (suffix) {
+                newText = prefix + selectedText + suffix;
+            } else {
+                newText = prefix + selectedText;
+            }
+
+            // 替换选中的文本
+            textarea.value = textarea.value.substring(0, start) + newText + textarea.value.substring(end);
+
+            // 重新设置光标位置
+            const newCursorPos = start + newText.length;
+            textarea.setSelectionRange(newCursorPos, newCursorPos);
+
+            // 聚焦到文本框
+            textarea.focus();
+        }
+
+        // 加载密钥信息
+        async function loadSecretsInfo() {
+            try {
+                const response = await fetch('/api/secrets-info');
+                const data = await response.json();
+
+                if (data.success) {
+                    const secretsInfoDiv = document.getElementById('secretsInfo');
+                    secretsInfoDiv.innerHTML = `
+                        <p><strong>主密钥:</strong> ${data.mainSecret}</p>
+                        <p><strong>副密钥:</strong> ${data.deputySecret}</p>
+                        <p><strong>系统密钥:</strong> ${data.systemSecret}</p>
+                        <p><strong>需要轮换:</strong> ${data.needsRotation ? '是' : '否'}</p>
+                    `;
+
+                    // 更新系统密钥状态
+                    document.getElementById('systemSecretStatus').textContent = data.systemSecret;
+                } else {
+                    document.getElementById('secretsInfo').innerHTML = '<p style="color: var(--error-color);">加载失败: ' + data.message + '</p>';
+                }
+            } catch (error) {
+                console.error('加载密钥信息失败:', error);
+                document.getElementById('secretsInfo').innerHTML = '<p style="color: var(--error-color);">加载失败</p>';
+            }
+        }
+
+        // 更新主密钥
+        document.getElementById('updateMainSecretBtn').addEventListener('click', async function() {
+            const mainSecret = document.getElementById('mainSecret').value;
+
+            if (!mainSecret) {
+                alert('请输入主密钥');
+                return;
+            }
+
+            if (!/^[a-zA-Z0-9]+$/.test(mainSecret)) {
+                alert('主密钥只能包含字母和数字');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/update-main-secret', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ secret: mainSecret })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('主密钥更新成功！');
+                    document.getElementById('mainSecret').value = '';
+                    loadSecretsInfo(); // 重新加载信息
+                } else {
+                    alert('更新失败: ' + result.message);
+                }
+            } catch (error) {
+                console.error('更新主密钥失败:', error);
+                alert('更新失败，请重试');
+            }
+        });
+
+        // 生成新副密钥
+        document.getElementById('generateDeputySecretBtn').addEventListener('click', async function() {
+            if (!confirm('确定要生成新的副密钥吗？这将影响系统密钥的安全性。')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/update-deputy-secret', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({})
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('副密钥更新成功！');
+                    loadSecretsInfo(); // 重新加载信息
+                } else {
+                    alert('更新失败: ' + result.message);
+                }
+            } catch (error) {
+                console.error('更新副密钥失败:', error);
+                alert('更新失败，请重试');
+            }
+        });
+
+        // 生成新系统密钥
+        document.getElementById('generateSystemSecretBtn').addEventListener('click', async function() {
+            if (!confirm('确定要生成新的系统密钥吗？这将影响所有加密数据的安全性。')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/update-system-secret', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({})
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('系统密钥更新成功！');
+                    loadSecretsInfo(); // 重新加载信息
+                } else {
+                    alert('更新失败: ' + result.message);
+                }
+            } catch (error) {
+                console.error('更新系统密钥失败:', error);
+                alert('更新失败，请重试');
+            }
+        });
+
+        // 页面加载时获取密钥信息
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSecretsInfo();
+        });
+    </script>
+</body>
+</html>

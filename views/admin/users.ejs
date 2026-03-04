@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>零核服务器 - 用户管理</title>
+    <%- include('../partials/head'); %>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">用户管理</h1>
+        </div>
+
+        <div class="card">
+            <h2>用户列表</h2>
+            <div class="table-container">
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>用户名</th>
+                            <th>UUID</th>
+                            <th>权限</th>
+                            <th>积分</th>
+                            <th>注册时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% users.forEach(userItem => { %>
+                            <tr>
+                                <td><%= userItem.name %></td>
+                                <td><%= userItem.UUID %></td>
+                                <td><%= userItem.author %></td>
+                                <td><%= userItem.points || 0 %></td>
+                                <td><%= userItem.time %></td>
+                                <td>
+                                    <button class="button button-secondary edit-btn" data-user="<%= JSON.stringify(userItem) %>">编辑</button>
+                                    <% if (user.UUID !== userItem.UUID) { %>
+                                        <button class="button button-secondary delete-btn" data-id="<%= userItem.UUID %>" data-name="<%= userItem.name %>">删除</button>
+                                    <% } %>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>添加用户</h2>
+            <form id="addUserForm">
+                <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <label for="newUsername" class="input-label">用户名</label>
+                        <input type="text" id="newUsername" name="name" required class="input-field">
+                    </div>
+                    <div style="flex: 1; min-width: 200px;">
+                        <label for="newPassword" class="input-label">密码</label>
+                        <input type="password" id="newPassword" name="password" required class="input-field">
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
+                        <label for="newAuthor" class="input-label">权限</label>
+                        <select id="newAuthor" name="author" class="input-field">
+                            <option value="user">user</option>
+                            <% if (user.author === 'system') { %>
+                                <option value="admin">admin</option>
+                                <option value="system">system</option>
+                            <% } %>
+                        </select>
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
+                        <label for="newPoints" class="input-label">积分</label>
+                        <input type="number" id="newPoints" name="points" value="0" class="input-field">
+                    </div>
+                </div>
+                <button type="submit" class="button button-primary">添加用户</button>
+            </form>
+        </div>
+
+        <!-- 编辑用户模态框 -->
+        <div id="editModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>编辑用户</h3>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <form id="editUserForm">
+                        <input type="hidden" id="editUserId" name="id">
+                        <div style="display: flex; flex-direction: column; gap: 15px;">
+                            <div>
+                                <label for="editUsername" class="input-label">用户名</label>
+                                <input type="text" id="editUsername" name="name" required class="input-field">
+                            </div>
+                            <div>
+                                <label for="editAuthor" class="input-label">权限</label>
+                                <select id="editAuthor" name="author" class="input-field">
+                                    <option value="user">user</option>
+                                    <% if (user.author === 'system') { %>
+                                        <option value="admin">admin</option>
+                                        <option value="system">system</option>
+                                    <% } %>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="editPoints" class="input-label">积分</label>
+                                <input type="number" id="editPoints" name="points" class="input-field">
+                            </div>
+                            <div>
+                                <label for="editAvatar" class="input-label">头像URL</label>
+                                <input type="text" id="editAvatar" name="avatar" class="input-field">
+                            </div>
+                            <button type="submit" class="button button-primary">保存更改</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <%- include('../partials/scripts'); %>
+    
+    <style>
+        .user-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .user-table th, .user-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .user-table th {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+        
+        .table-container {
+            overflow-x: auto;
+        }
+        
+        .modal {
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+        
+        .modal-content {
+            background: var(--bg-secondary);
+            margin: 10% auto;
+            padding: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: var(--shadow-heavy);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            color: var(--text-primary);
+        }
+        
+        .close {
+            color: var(--text-secondary);
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .close:hover {
+            color: var(--accent-color);
+        }
+        
+        .modal-body {
+            padding: 20px;
+        }
+    </style>
+    
+    <script>
+        // 编辑用户功能
+        document.querySelectorAll('.edit-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const userData = JSON.parse(this.getAttribute('data-user'));
+                document.getElementById('editUserId').value = userData.UUID;
+                document.getElementById('editUsername').value = userData.name;
+                document.getElementById('editAuthor').value = userData.author;
+                document.getElementById('editPoints').value = userData.points || 0;
+                document.getElementById('editAvatar').value = userData.avatar || '';
+                
+                document.getElementById('editModal').style.display = 'block';
+            });
+        });
+
+        // 关闭模态框
+        document.querySelector('.close').addEventListener('click', function() {
+            document.getElementById('editModal').style.display = 'none';
+        });
+
+        // 点击模态框外部关闭
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('editModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+
+        // 编辑用户表单提交
+        document.getElementById('editUserForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const userId = formData.get('id');
+            
+            fetch(`/panel/users/${userId}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    throw new Error('更新用户失败');
+                }
+            })
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.message || '更新用户失败');
+                }
+            })
+            .catch(error => {
+                console.error('错误:', error);
+                alert('更新用户时发生错误: ' + error.message);
+            });
+        });
+
+        // 删除用户功能
+        document.querySelectorAll('.delete-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const userId = this.getAttribute('data-id');
+                const userName = this.getAttribute('data-name');
+                
+                if (confirm(`确定要删除用户 "${userName}" 吗？此操作不可撤销。`)) {
+                    fetch(`/panel/users/${userId}`, {
+                        method: 'DELETE'
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            location.reload();
+                        } else {
+                            alert('删除用户失败');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('错误:', error);
+                        alert('删除用户时发生错误');
+                    });
+                }
+            });
+        });
+
+        // 添加用户表单提交
+        document.getElementById('addUserForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            
+            fetch('/panel/users', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('添加用户失败');
+                }
+            })
+            .catch(error => {
+                console.error('错误:', error);
+                alert('添加用户时发生错误');
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>零核服务器 - <%= post.title %></title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .post-content {
+            line-height: 1.6;
+            padding: 15px 0;
+        }
+        
+        .post-content h1, .post-content h2, .post-content h3 {
+            margin-top: 10px;
+            margin-bottom: 10px;
+            color: var(--accent-color);
+        }
+        
+        .post-content p {
+            margin: 10px 0;
+        }
+        
+        .post-content code {
+            background-color: var(--bg-tertiary);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+            color: var(--accent-color);
+        }
+        
+        .post-content pre {
+            background-color: var(--bg-tertiary);
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+        
+        .post-content blockquote {
+            border-left: 3px solid var(--accent-color);
+            padding-left: 15px;
+            margin-left: 0;
+            color: var(--text-secondary);
+            background-color: var(--bg-tertiary);
+            padding: 10px;
+            border-radius: 0 5px 5px 0;
+        }
+        
+        .post-content ul, .post-content ol {
+            padding-left: 20px;
+        }
+        
+        .post-content li {
+            margin: 5px 0;
+        }
+        
+        .reply-form {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .reply-item {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: var(--bg-tertiary);
+            border-radius: 5px;
+        }
+        
+        .reply-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .reply-content {
+            line-height: 1.6;
+        }
+        
+        .reply-content h1, .reply-content h2, .reply-content h3 {
+            margin-top: 10px;
+            margin-bottom: 10px;
+            color: var(--accent-color);
+        }
+        
+        .reply-content p {
+            margin: 10px 0;
+        }
+        
+        .reply-content code {
+            background-color: var(--bg-secondary);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        
+        .reply-content pre {
+            background-color: var(--bg-secondary);
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        
+        .reply-content blockquote {
+            border-left: 3px solid var(--accent-color);
+            padding-left: 15px;
+            margin-left: 0;
+            color: var(--text-secondary);
+        }
+        
+        .reply-content ul, .reply-content ol {
+            padding-left: 20px;
+        }
+        
+        .reply-content li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <%- include('../partials/sidebar', { currentPath }) %>
+
+    <div class="content">
+        <div class="container">
+            <h1 class="title">零核论坛</h1>
+            
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2><%= post.title %></h2>
+                    <div>
+                        <% if (user.UUID === post.authorId || user.author === 'admin' || user.author === 'system') { %>
+                            <a href="/forum/post/<%= post.id %>/edit" class="button button-secondary" style="margin-right: 10px;">编辑</a>
+                            <button onclick="deletePost('<%= post.id %>')" class="button button-secondary" style="margin-right: 10px;">删除</button>
+                        <% } %>
+                        <a href="/forum" class="button button-secondary">返回论坛</a>
+                    </div>
+                </div>
+                
+                <div class="post-meta" style="color: var(--text-secondary); margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color);">
+                    <span>作者: <a href="/<%= post.authorId %>/intro" style="color: var(--accent-color);"><%= post.author %></a></span> |
+                    <span>分类: <a href="/forum/category/<%= category.id %>" style="color: var(--accent-color);"><%= category.name %></a></span> |
+                    <span>发布时间: <%= new Date(post.createdAt).toLocaleString() %></span> |
+                    <span>最后更新: <%= new Date(post.updatedAt).toLocaleString() %></span>
+                </div>
+                
+                <div class="post-content">
+                    <%- post.renderedContent %>
+                </div>
+                
+                <div class="replies-section">
+                    <h3>回复 (<%= replies.length %>)</h3>
+                    
+                    <% if (replies.length > 0) { %>
+                        <% replies.forEach(reply => { %>
+                            <div class="reply-item">
+                                <div class="reply-header">
+                                    <div>
+                                        <strong><a href="/<%= reply.authorId %>/intro" style="color: var(--accent-color);"><%= reply.author %></a></strong>
+                                        <span style="color: var(--text-secondary); margin-left: 10px;"><%= new Date(reply.createdAt).toLocaleString() %></span>
+                                    </div>
+                                </div>
+                                <div class="reply-content">
+                                    <%- reply.renderedContent %>
+                                </div>
+                            </div>
+                        <% }); %>
+                    <% } else { %>
+                        <p style="color: var(--text-tertiary); text-align: center; padding: 20px;">暂无回复，快来抢沙发吧！</p>
+                    <% } %>
+                    
+                    <div class="reply-form">
+                        <h3>发表回复</h3>
+                        <form action="/forum/post/<%= post.id %>/reply" method="post">
+                            <div style="margin-bottom: 15px;">
+                                <textarea name="content" class="input-field" rows="5" placeholder="输入您的回复内容..." required></textarea>
+                            </div>
+                            <button type="submit" class="button button-primary">发表回复</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 删除帖子函数
+        async function deletePost(postId) {
+            if (!confirm('确定要删除这个帖子吗？此操作不可撤销。')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/forum/post/${postId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('帖子已删除');
+                    window.location.href = '/forum'; // 跳转到论坛首页
+                } else {
+                    alert('删除失败: ' + result.message);
+                }
+            } catch (error) {
+                console.error('删除帖子时发生错误:', error);
+                alert('删除失败，请稍后再试');
+            }
+        }
+
+        // 侧边栏响应式功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+            const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+            const overlay = document.getElementById('overlay');
+
+            // 检测屏幕宽度并相应处理侧边栏
+            function handleResize() {
+                if (window.innerWidth <= 768) {
+                    // 移动端：隐藏侧边栏
+                    sidebar.classList.add('hidden');
+                    // 确保移动菜单按钮显示
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.style.display = 'flex';
+                    }
+                } else {
+                    // 桌面端：显示侧边栏
+                    sidebar.classList.remove('hidden');
+                    // 隐藏移动菜单按钮
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.style.display = 'none';
+                    }
+                }
+            }
+
+            // 初始化
+            handleResize();
+
+            // 监听窗口大小变化
+            window.addEventListener('resize', handleResize);
+
+            // 移动端打开侧边栏
+            if (mobileMenuBtn) {
+                mobileMenuBtn.addEventListener('click', function() {
+                    sidebar.classList.remove('hidden');
+                    overlay.style.display = 'block';
+                    document.body.style.overflow = 'hidden'; // 防止背景滚动
+                });
+            }
+
+            // 移动端关闭侧边栏
+            if (closeSidebarBtn) {
+                closeSidebarBtn.addEventListener('click', function() {
+                    sidebar.classList.add('hidden');
+                    overlay.style.display = 'none';
+                    document.body.style.overflow = 'auto'; // 恢复背景滚动
+                });
+            }
+
+            // 点击遮罩层关闭侧边栏
+            if (overlay) {
+                overlay.addEventListener('click', function() {
+                    sidebar.classList.add('hidden');
+                    overlay.style.display = 'none';
+                    document.body.style.overflow = 'auto'; // 恢复背景滚动
+                });
+            }
+
+            // 为导航链接添加点击事件，移动端点击后关闭侧边栏
+            const navLinks = document.querySelectorAll('.nav-menu a');
+            navLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.add('hidden');
+                        if (overlay) {
+                            overlay.style.display = 'none';
+                        }
+                        document.body.style.overflow = 'auto'; // 恢复背景滚动
+                    }
+                });
+            });
+        });
+
+        // 主题管理器类
+        class ThemeManager {
+            constructor() {
+                this.currentTheme = this.getStoredTheme() || this.getSystemTheme();
+                this.init();
+            }
+
+            // 初始化主题
+            init() {
+                this.applyTheme(this.currentTheme);
+            }
+
+            // 获取存储的主题
+            getStoredTheme() {
+                return localStorage.getItem('theme');
+            }
+
+            // 获取系统主题偏好
+            getSystemTheme() {
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+                    return 'light';
+                }
+                return 'dark';
+            }
+
+            // 应用主题
+            applyTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+                this.currentTheme = theme;
+
+                // 触发主题改变事件
+                window.dispatchEvent(new CustomEvent('themeChanged', { detail: { theme } }));
+            }
+
+            // 切换主题
+            toggleTheme() {
+                const newTheme = this.currentTheme === 'dark' ? 'light' : 'dark';
+                this.applyTheme(newTheme);
+                return newTheme;
+            }
+
+            // 获取当前主题
+            getCurrentTheme() {
+                return this.currentTheme;
+            }
+
+            // 检查是否为深色模式
+            isDark() {
+                return this.currentTheme === 'dark';
+            }
+
+            // 检查是否为浅色模式
+            isLight() {
+                return this.currentTheme === 'light';
+            }
+        }
+
+        // 创建全局主题管理器实例
+        window.themeManager = new ThemeManager();
+
+        // 如果用户有保存的主题设置，优先使用用户设置
+        document.addEventListener('DOMContentLoaded', function() {
+            <% if (typeof user !== 'undefined' && user && user.theme) { %>
+                // 应用用户保存的主题设置
+                document.documentElement.setAttribute('data-theme', '<%= user.theme %>');
+                localStorage.setItem('theme', '<%= user.theme %>');
+                window.themeManager.currentTheme = '<%= user.theme %>';
+            <% } %>
+        });
+    </script>
+</body>
+</html>
