@@ -934,6 +934,21 @@ function initializeDatabase() {
       updated = true;
     }
 
+    // 确保 stats 字段存在
+    if (!db.stats) {
+      db.stats = {
+        visitCount: 0,
+        userCount: 0
+      };
+      updated = true;
+    }
+
+    // 确保 update-log 字段存在
+    if (!db['update-log']) {
+      db['update-log'] = [];
+      updated = true;
+    }
+
     // 检查是否已有系统管理员用户
     const systemUserExists = db.users.some(user => user.UUID === "0000-0000-0000-0000");
     if (!systemUserExists && db.users.length > 0) {
