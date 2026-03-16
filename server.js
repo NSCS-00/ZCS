@@ -656,7 +656,16 @@ class ModuleSandbox {
   }
 
   renderView(viewName, data) {
-    const viewEngine = this.config.viewEngine || 'ejs';
+    // 验证视图引擎配置，确保使用支持的引擎
+    const supportedEngines = ['ejs', 'handlebars', 'pug', 'mustache'];
+    let viewEngine = this.config.viewEngine || 'ejs';
+    
+    // 如果配置的引擎不支持，回退到 EJS
+    if (!supportedEngines.includes(viewEngine)) {
+      console.warn(`模块 ${this.config.name} 配置了不支持的视图引擎 '${viewEngine}'，将使用 EJS 代替`);
+      viewEngine = 'ejs';
+    }
+    
     const viewPath = path.join(this.modulePath, 'views', `${viewName}.${this.getViewExtension(viewEngine)}`);
 
     if (!fs.existsSync(viewPath)) {

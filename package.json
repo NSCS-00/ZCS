@@ -1,6 +1,6 @@
 {
   "name": "zero-core-server",
-  "version": "1.5.0.1",
+  "version": "1.5.0.2",
   "description": "零核服务器 - 一个基于Node.js的模块化系统",
   "main": "server.js",
   "scripts": {

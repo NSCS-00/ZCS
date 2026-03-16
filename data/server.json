@@ -1,6 +1,14 @@
 {
   "update-log": [
     {
+      "1": "修复模块视图引擎配置错误导致 require('js') 报错的问题",
+      "2": "添加视图引擎验证机制，不支持的引擎自动回退到 EJS",
+      "3": "更新 README 文档，添加 viewEngine 配置说明和常见问题",
+      "version": "1.5.0.2",
+      "quantity": 3,
+      "time": "2026-03-16"
+    },
+    {
       "1": "修复 BSIO 在 Windows 终端颜色显示问题",
       "2": "修复 BSIO printHeader 居中计算问题",
       "3": "清理 server.json 只保留更新日志",
