@@ -1909,14 +1909,20 @@ app.get('/module/:moduleName', (req, res) => {
     return res.status(404).send('此模块为API模块，无页面');
   }
 
-  const modulePath = path.join(__dirname, 'module', moduleName, module.main);
-
-  if (!fs.existsSync(modulePath)) {
-    return res.status(404).send('模块入口文件不存在');
+  // 验证视图引擎配置
+  const supportedEngines = ['ejs', 'handlebars', 'pug', 'mustache'];
+  const viewEngine = module.viewEngine || 'ejs';
+  
+  if (!supportedEngines.includes(viewEngine)) {
+    bsio.warning(`模块 ${module.name} 配置了不支持的视图引擎 '${viewEngine}'，将使用 EJS 代替`);
   }
+  
+  // 构建视图路径（从模块的 views 目录加载）
+  const viewName = path.basename(module.main, path.extname(module.main));
+  const viewPath = `../module/${moduleName}/views/${viewName}`;
 
   // 为模块渲染页面，传递用户信息和模块信息
-  res.render(`../module/${moduleName}/${module.main.replace('.ejs', '')}`, {
+  res.render(viewPath, {
     user,
     currentPath: `/module/${moduleName}`,
     moduleInfo: module
