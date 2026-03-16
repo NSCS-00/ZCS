@@ -586,7 +586,10 @@ class ModuleSandbox {
       setInterval: setInterval,
       clearInterval: clearInterval,
       setImmediate: setImmediate,
-      clearImmediate: clearImmediate
+      clearImmediate: clearImmediate,
+      // 提供模块路径相关的变量
+      __dirname: this.modulePath,
+      __filename: path.join(this.modulePath, this.config.main || '')
     };
 
     this.sandbox = vm.createContext({
