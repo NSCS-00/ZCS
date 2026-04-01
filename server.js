@@ -16,6 +16,7 @@ const handlebars = require('handlebars');
 const pug = require('pug');
 const mustache = require('mustache');
 const { BSIO, LogLevel } = require('./bsio');
+const { ZCNET_CONFIG, CreditPoolManager, ZCnetNetwork } = require('./zcnet');
 
 // 初始化 BSIO
 const bsio = new BSIO({ logLevel: LogLevel.DEBUG, showColors: true });
@@ -937,6 +938,12 @@ function initializeDatabase() {
       updated = true;
     }
 
+    // 确保 zcnet 字段存在
+    if (!db.zcnet) {
+      db.zcnet = { nodes: {}, creditPool: null };
+      updated = true;
+    }
+
     // 确保 stats 字段存在
     if (!db.stats) {
       db.stats = {
@@ -965,6 +972,10 @@ function initializeDatabase() {
     }
   }
 }
+
+// 初始化 ZCnet 网络和积分池管理器
+const creditPool = new CreditPoolManager();
+const zcnetNetwork = new ZCnetNetwork(encryption);
 
 // 初始化高级加密模块
 const encryption = new AdvancedEncryption('./data/secret.json');
@@ -2755,7 +2766,7 @@ function preStartCheck() {
 
   // 检查并补充关键文件
   const filesToCheck = [
-    { path: path.join(__dirname, 'data', 'server.json'), default: { users: [], stats: { visitCount: 0, userCount: 0 }, 'update-log': [], forum: { posts: [], categories: [{ id: 'general', name: '综合讨论', description: '一般性话题讨论区' }, { id: 'tech', name: '技术交流', description: '技术相关话题讨论区' }, { id: 'feedback', name: '意见反馈', description: '对零核服务器的意见和建议' }] }, modules: { favorites: {}, comments: {} } } },
+    { path: path.join(__dirname, 'data', 'server.json'), default: { users: [], stats: { visitCount: 0, userCount: 0 }, 'update-log': [], forum: { posts: [], categories: [{ id: 'general', name: '综合讨论', description: '一般性话题讨论区' }, { id: 'tech', name: '技术交流', description: '技术相关话题讨论区' }, { id: 'feedback', name: '意见反馈', description: '对零核服务器的意见和建议' }] }, modules: { favorites: {}, comments: {} }, zcnet: { nodes: {}, creditPool: null } } },
     { path: path.join(__dirname, 'data', 'secret.json'), default: { main: { secret: '0000' }, deputy: { secret: '' }, system: { secret: '' }, file: {} } },
     { path: path.join(__dirname, 'module', 'data', 'comments.json'), default: { comments: {} } }
   ];
