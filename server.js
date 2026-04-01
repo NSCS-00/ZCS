@@ -2209,7 +2209,435 @@ app.delete('/api/module/comments/:moduleId/:commentId', requireAuth, (req, res) 
   }
 });
 
-// API: 获取系统公告
+// ============================================
+// ZCnet 网络 API - 聚合器主包处理 (v1.1.0)
+// ============================================
+
+// API: 接收来自主包的数据（聚合器端点）
+app.post('/api/packet', (req, res) => {
+  const { encrypted, signature } = req.body;
+
+  if (!encrypted || !signature) {
+    return res.status(400).json({ 
+      success: false, 
+      error: '缺少加密数据或签名',
+      errorCode: 400
+    });
+  }
+
+  // 验证签名（遍历所有已知节点的密钥）
+  let verified = false;
+  let decryptedData = null;
+  let sourceNode = null;
+
+  for (const [nodeId, node] of zcnetNetwork.knownNodes.entries()) {
+    try {
+      if (zcnetNetwork.verifySignature(encrypted, signature, node.sharedSecret)) {
+        decryptedData = zcnetNetwork.decryptData(encrypted.data, encrypted.iv, node.sharedSecret);
+        verified = true;
+        sourceNode = nodeId;
+        bsio.info('✅ 验证通过：来自节点 ' + nodeId);
+        break;
+      }
+    } catch (e) {
+      // 尝试下一个节点
+    }
+  }
+
+  if (!verified) {
+    return res.status(403).json({ 
+      success: false, 
+      error: '签名验证失败',
+      errorCode: 403
+    });
+  }
+
+  // 解析主包
+  const { source, version, timestamp, sequence, packets } = decryptedData;
+
+  // 检查时间戳（防止重放攻击）
+  const now = Date.now();
+  if (now - timestamp > 300000) {  // 5 分钟有效期
+    return res.status(400).json({ 
+      success: false, 
+      error: '请求已过期',
+      errorCode: 400
+    });
+  }
+
+  // 检查序列号（防止重放）
+  if (!zcnetNetwork.receivedSequences) {
+    zcnetNetwork.receivedSequences = new Map();
+  }
+  const seqKey = source + '-' + sequence;
+  if (zcnetNetwork.receivedSequences.has(seqKey)) {
+    return res.status(409).json({ 
+      success: false, 
+      error: '重复的序列号（重放攻击）',
+      errorCode: 409
+    });
+  }
+  zcnetNetwork.receivedSequences.set(seqKey, now);
+  // 清理旧序列号（保留最近 1000 个）
+  if (zcnetNetwork.receivedSequences.size > 1000) {
+    const entries = Array.from(zcnetNetwork.receivedSequences.entries());
+    entries.sort((a, b) => b[1] - a[1]);
+    entries.slice(1000).forEach(([key]) => zcnetNetwork.receivedSequences.delete(key));
+  }
+
+  // 处理 packets 数组中的每个子包
+  const results = [];
+  const failed = [];
+
+  for (const packet of packets) {
+    try {
+      const result = executePacketRequest(packet, sourceNode);
+      if (result && result.success) {
+        results.push(result);
+      } else if (result) {
+        failed.push(result);
+      }
+    } catch (error) {
+      bsio.error('执行子包失败 ' + (packet.name || 'unknown') + ': ' + error.message);
+      failed.push({
+        name: packet.name || 'unknown',
+        success: false,
+        statusCode: 500,
+        error: error.message
+      });
+    }
+  }
+
+  res.json({ 
+    success: results.length > 0 || failed.length === 0,
+    results,
+    failed,
+    processedAt: Date.now()
+  });
+});
+
+// 执行子包请求
+function executePacketRequest(packet, sourceNode) {
+  const { name, protocol, method, path, headers, query, body, port, host, timeout } = packet;
+
+  bsio.debug('执行子包：' + name + ' [' + protocol + ' ' + method + ' ' + path + ']');
+
+  // HTTP/HTTPS 协议处理
+  if (protocol === 'HTTP' || protocol === 'HTTPS') {
+    return executeHttpRequest({ name, method, path, headers, query, body, timeout });
+  }
+
+  // TCP 协议处理
+  if (protocol === 'TCP') {
+    return executeTcpRequest({ name, host, port, body, timeout });
+  }
+
+  // UDP 协议处理
+  if (protocol === 'UDP') {
+    return executeUdpRequest({ name, host, port, body, timeout });
+  }
+
+  // WebSocket 协议处理（简化）
+  if (protocol === 'WebSocket') {
+    return executeWebSocketRequest({ name, path, body, timeout });
+  }
+
+  return {
+    name: name || 'unknown',
+    success: false,
+    statusCode: 400,
+    error: '不支持的协议：' + protocol
+  };
+}
+
+// 执行 HTTP 请求（内部路由）
+function executeHttpRequest({ name, method, path, headers, query, body, timeout = 30000 }) {
+  const db = readDatabase();
+
+  // 模拟请求处理
+  try {
+    // GET /api/time
+    if (method === 'GET' && path === '/api/time') {
+      const requestStartTime = Date.now();
+      return {
+        name: name || path,
+        success: true,
+        statusCode: 200,
+        data: {
+          ZCS_time: new Date(requestStartTime).toISOString(),
+          windows_time: new Date(requestStartTime).toISOString(),
+          local_time: query ? query.local : null,
+          timestamp: requestStartTime
+        }
+      };
+    }
+
+    // GET /api/announcement
+    if (method === 'GET' && path === '/api/announcement') {
+      const announcement = db.ann ? db.ann.text : '暂无系统公告';
+      return {
+        name: name || path,
+        success: true,
+        statusCode: 200,
+        data: { announcement }
+      };
+    }
+
+    // POST /api/zcnet/sync-user
+    if (method === 'POST' && path === '/api/zcnet/sync-user') {
+      const { user, action } = body || {};
+      if (!user || !user.UUID) {
+        return {
+          name: name || path,
+          success: false,
+          statusCode: 400,
+          error: '无效的用户数据'
+        };
+      }
+
+      const userIndex = db.users.findIndex(u => u.UUID === user.UUID);
+
+      if (action === 'create' || action === 'update') {
+        if (userIndex === -1) {
+          db.users.push(user);
+          db.stats.userCount = db.users.length;
+          bsio.info('ZCnet: 创建用户 ' + user.name + ' (' + user.UUID + ')');
+        } else {
+          db.users[userIndex] = user;
+          bsio.info('ZCnet: 更新用户 ' + user.name + ' (' + user.UUID + ')');
+        }
+        writeDatabase(db);
+        return {
+          name: name || path,
+          success: true,
+          statusCode: 200,
+          data: { message: '用户数据已同步' }
+        };
+      }
+
+      if (action === 'delete') {
+        if (userIndex !== -1) {
+          db.users.splice(userIndex, 1);
+          db.stats.userCount = db.users.length;
+          writeDatabase(db);
+          bsio.info('ZCnet: 删除用户 ' + user.name + ' (' + user.UUID + ')');
+        }
+        return {
+          name: name || path,
+          success: true,
+          statusCode: 200,
+          data: { message: '用户已删除' }
+        };
+      }
+
+      return {
+        name: name || path,
+        success: false,
+        statusCode: 400,
+        error: '未知的操作类型'
+      };
+    }
+
+    // POST /api/zcnet/credit-pool/allocate
+    if (method === 'POST' && path === '/api/zcnet/credit-pool/allocate') {
+      const { userId, amount } = body || {};
+      const user = db.users.find(u => u.UUID === userId);
+      
+      if (!user) {
+        return {
+          name: name || path,
+          success: false,
+          statusCode: 404,
+          error: '用户不存在'
+        };
+      }
+
+      if (!amount || amount <= 0) {
+        return {
+          name: name || path,
+          success: false,
+          statusCode: 400,
+          error: '无效的数量'
+        };
+      }
+
+      const result = creditPool.allocateCredits(userId, amount, sourceNode || 'remote');
+      if (result.success) {
+        user.points = (user.points || 0) + amount;
+        writeDatabase(db);
+      }
+
+      return {
+        name: name || path,
+        success: result.success,
+        statusCode: result.success ? 200 : 400,
+        data: result
+      };
+    }
+
+    // POST /api/zcnet/sync-credit-pool
+    if (method === 'POST' && path === '/api/zcnet/sync-credit-pool') {
+      const { poolData, merge } = body || {};
+      
+      try {
+        creditPool.importPoolData(poolData, merge !== false);
+        bsio.info('ZCnet: 积分池同步完成，合并模式：' + (merge !== false));
+        return {
+          name: name || path,
+          success: true,
+          statusCode: 200,
+          data: { message: '积分池已同步' }
+        };
+      } catch (error) {
+        return {
+          name: name || path,
+          success: false,
+          statusCode: 500,
+          error: error.message
+        };
+      }
+    }
+
+    // POST /api/zcnet/credit-pool/generate
+    if (method === 'POST' && path === '/api/zcnet/credit-pool/generate') {
+      const { amount, source } = body || {};
+      
+      if (!amount || amount <= 0) {
+        return {
+          name: name || path,
+          success: false,
+          statusCode: 400,
+          error: '无效的数量'
+        };
+      }
+
+      const credits = creditPool.generateCredits(amount, source || sourceNode || 'remote');
+      return {
+        name: name || path,
+        success: true,
+        statusCode: 200,
+        data: { count: credits.length }
+      };
+    }
+
+    // 未知路由
+    return {
+      name: name || path,
+      success: false,
+      statusCode: 404,
+      error: '路由不存在：' + method + ' ' + path
+    };
+
+  } catch (error) {
+    return {
+      name: name || path,
+      success: false,
+      statusCode: 500,
+      error: error.message
+    };
+  }
+}
+
+// 执行 TCP 请求
+function executeTcpRequest({ name, host, port, body, timeout = 10000 }) {
+  const net = require('net');
+  
+  return new Promise((resolve) => {
+    const client = net.createConnection({ host: host || '127.0.0.1', port: port || 8080 }, () => {
+      client.write(body || '');
+    });
+
+    let responseData = '';
+    const timer = setTimeout(() => {
+      client.destroy();
+      resolve({
+        name: name || ('tcp-' + host + ':' + port),
+        success: false,
+        statusCode: 408,
+        error: 'TCP 请求超时'
+      });
+    }, timeout);
+
+    client.on('data', (data) => {
+      responseData += data.toString();
+    });
+
+    client.on('end', () => {
+      clearTimeout(timer);
+      resolve({
+        name: name || ('tcp-' + host + ':' + port),
+        success: true,
+        statusCode: 200,
+        data: responseData
+      });
+    });
+
+    client.on('error', (err) => {
+      clearTimeout(timer);
+      resolve({
+        name: name || ('tcp-' + host + ':' + port),
+        success: false,
+        statusCode: 500,
+        error: err.message
+      });
+    });
+  });
+}
+
+// 执行 UDP 请求
+function executeUdpRequest({ name, host, port, body, timeout = 10000 }) {
+  const dgram = require('dgram');
+  const socket = dgram.createSocket('udp4');
+  
+  return new Promise((resolve) => {
+    const message = Buffer.from(typeof body === 'object' ? JSON.stringify(body) : (body || ''));
+    
+    const timer = setTimeout(() => {
+      socket.close();
+      resolve({
+        name: name || ('udp-' + host + ':' + port),
+        success: false,
+        statusCode: 408,
+        error: 'UDP 请求超时'
+      });
+    }, timeout);
+
+    socket.send(message, 0, message.length, port, host, (err) => {
+      if (err) {
+        clearTimeout(timer);
+        socket.close();
+        resolve({
+          name: name || ('udp-' + host + ':' + port),
+          success: false,
+          statusCode: 500,
+          error: err.message
+        });
+      } else {
+        clearTimeout(timer);
+        socket.close();
+        resolve({
+          name: name || ('udp-' + host + ':' + port),
+          success: true,
+          statusCode: 200,
+          data: { sent: true, to: host + ':' + port }
+        });
+      }
+    });
+  });
+}
+
+// 执行 WebSocket 请求（简化处理）
+function executeWebSocketRequest({ name, path, body, timeout = 60000 }) {
+  // WebSocket 需要实际的 WS 连接，这里简化处理
+  return {
+    name: name || path,
+    success: true,
+    statusCode: 200,
+    data: { message: 'WebSocket 请求已接收（需要实际 WS 连接）', path, body }
+  };
+}
+
+// API: 获取系统公告// API: 获取系统公告
 app.get('/api/announcement', (req, res) => {
   const db = readDatabase();
   const announcement = db.ann ? db.ann.text : '暂无系统公告';
